@@ -55,6 +55,12 @@ Everything saves automatically inside the browser on this device. Nothing is upl
 
 To move to another computer or browser, open the tracker there. Then go to **Import / Export → Restore from backup**.
 
+A restore replaces everything on that computer. Before it does, the tracker compares the backup with what's on the computer:
+- If the computer has changes that aren't in the backup, it lists them, warns that they'd be lost, and offers to back up the computer first.
+- If nothing would be lost, it says so.
+
+If you use two computers, restore the latest backup when you sit down, and download a fresh one when you're done.
+
 ## What's in it
 
 | Section | What it does |
@@ -78,6 +84,13 @@ A fee plan is a standard fee and its installment schedule.
 ### Receipt photos
 
 Open an expense and use **Add photo**, drag photos in, or paste a screenshot. Photos are resized to about 1600 px (roughly 150–250 KB each), which keeps receipts readable. They're stored in the browser and included in backups. Click a thumbnail in the ledger to view, open full size or download.
+
+### The dragon 🐉
+
+A small dragon peeks up from the bottom-left corner:
+- It reacts when you record things, and now and then reminds you about overdue fees or a backup.
+- Click it for a dragon boat fun fact.
+- Turn it off under **Settings → Mascot**.
 
 ### Mistakes
 

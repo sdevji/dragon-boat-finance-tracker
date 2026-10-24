@@ -244,6 +244,9 @@ fieldset.field legend { padding: 0; margin-bottom: 5px; }
 .notice.warn { background: var(--warn-soft); } .notice.warn > .ic { color: var(--warn-icon); }
 .notice.crit { background: var(--crit-soft); } .notice.crit > .ic { color: var(--crit); }
 .notice .notice-text { flex: 1 1 260px; }
+.notice ul { margin: 6px 0; padding-left: 18px; }
+.restore-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.restore-compare > div { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 
 /* ---------- Dashboard ---------- */
 .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 22px 26px; margin-bottom: 16px; }
@@ -445,6 +448,37 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 .toast.error { background: var(--crit); color: #fff; }
 .toast button { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
 
+/* ---------- Dragon mascot: peeks up from the bottom-left corner ---------- */
+.dragon { position: fixed; left: 14px; bottom: 0; z-index: 90; width: 112px; pointer-events: none; }
+.dragon-btn {
+  display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto;
+  transform: translateY(74%); transform-origin: 50% 100%; transition: transform .5s cubic-bezier(.34, 1.56, .64, 1);
+}
+.dragon-btn:hover { transform: translateY(64%); }
+.dragon-btn:focus-visible { box-shadow: none; outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.dragon.peek .dragon-btn { transform: translateY(14%) rotate(7deg); }
+.dragon svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .18)); }
+.dragon-bubble {
+  position: absolute; left: 96%; bottom: 66%; width: max-content; max-width: 230px; padding: 9px 12px; border-radius: 14px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  font-size: 13px; font-weight: 550; line-height: 1.35; opacity: 0; transform: translateY(6px) scale(.96); transform-origin: 0 100%;
+  transition: opacity .2s ease, transform .2s ease; pointer-events: none;
+}
+.dragon-bubble::after {
+  content: ''; position: absolute; left: -7px; bottom: 12px; width: 12px; height: 12px; background: var(--surface);
+  border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); transform: rotate(45deg);
+}
+.dragon.talking .dragon-bubble { opacity: 1; transform: none; }
+.dragon .dg-lid { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); animation: dg-blink 5.5s infinite; }
+.dragon .dg-pupil { transition: transform .12s ease-out; }
+.dragon.wiggle .dragon-btn { animation: dg-wiggle .6s ease; }
+@keyframes dg-blink { 0%, 92%, 100% { transform: scaleY(0); } 95% { transform: scaleY(1); } }
+@keyframes dg-wiggle { 0%, 100% { rotate: 0deg; } 25% { rotate: -7deg; } 75% { rotate: 7deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .dragon-btn, .dragon-bubble { transition: none; }
+  .dragon .dg-lid, .dragon.wiggle .dragon-btn { animation: none; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) {
@@ -464,9 +498,12 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
   .modal-backdrop { padding: 0; align-items: end; }
   .modal { border-radius: 14px 14px 0 0; max-height: 92vh; }
   tr.history-row > td { padding-left: 16px; }
+  .dragon { width: 84px; left: 6px; }
+  .dragon-btn { transform: translateY(78%); }
+  .dragon-bubble { max-width: 190px; }
 }
 @media print {
-  .topbar .top-right, .tabs, .toolbar, td.actions, .icon-btn, .notice { display: none !important; }
+  .topbar .top-right, .tabs, .toolbar, td.actions, .icon-btn, .notice, .dragon { display: none !important; }
   .topbar { position: static; }
   body { background: #fff; }
 }
@@ -496,6 +533,35 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 </main>
 <div id="modalRoot"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="dragon" id="dragon" hidden>
+  <div class="dragon-bubble" id="dragonBubble" aria-hidden="true"></div>
+  <button type="button" class="dragon-btn" id="dragonBtn" aria-label="Dragon mascot: click for a dragon boat fun fact">
+    <svg viewBox="0 0 140 120" aria-hidden="true">
+      <defs><linearGradient id="dgSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4cc79a"/><stop offset="1" stop-color="#2fa47a"/></linearGradient></defs>
+      <path d="M50 40C42 26 43 13 51 5c2 12 6 22 12 29Z" fill="#f6dfa8" stroke="#d0a35a" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M90 40c8-14 7-27-1-35-2 12-6 22-12 29Z" fill="#f6dfa8" stroke="#d0a35a" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M59 34l6-13 5 10 5-10 6 13Z" fill="#ff8a65"/>
+      <path d="M33 60C18 54 11 44 13 35c9 6 18 10 27 14Z" fill="#2a9670"/>
+      <path d="M107 60c15-6 22-16 20-25-9 6-18 10-27 14Z" fill="#2a9670"/>
+      <ellipse cx="70" cy="68" rx="41" ry="36" fill="url(#dgSkin)"/>
+      <ellipse cx="70" cy="88" rx="27" ry="17" fill="#9be3c3"/>
+      <ellipse cx="62" cy="83" rx="2.6" ry="2" fill="#1d6a4e"/>
+      <ellipse cx="78" cy="83" rx="2.6" ry="2" fill="#1d6a4e"/>
+      <path d="M61 93q9 7 18 0" fill="none" stroke="#1d6a4e" stroke-width="2.4" stroke-linecap="round"/>
+      <ellipse cx="40" cy="80" rx="7.5" ry="4.5" fill="#ff9fb3" opacity=".75"/>
+      <ellipse cx="100" cy="80" rx="7.5" ry="4.5" fill="#ff9fb3" opacity=".75"/>
+      <ellipse cx="54" cy="62" rx="9.5" ry="11" fill="#fff"/>
+      <ellipse cx="86" cy="62" rx="9.5" ry="11" fill="#fff"/>
+      <g class="dg-pupil"><circle cx="55" cy="64" r="5.8" fill="#1d1d1f"/><circle cx="57.3" cy="61.2" r="2" fill="#fff"/></g>
+      <g class="dg-pupil"><circle cx="85" cy="64" r="5.8" fill="#1d1d1f"/><circle cx="87.3" cy="61.2" r="2" fill="#fff"/></g>
+      <ellipse class="dg-lid" cx="54" cy="62" rx="10.2" ry="11.6" fill="#40b98b"/>
+      <ellipse class="dg-lid" cx="86" cy="62" rx="10.2" ry="11.6" fill="#40b98b"/>
+      <path d="M22 120c0-12 6-19 15-19s14 7 14 19Z" fill="#2fa47a"/>
+      <path d="M89 120c0-12 5-19 14-19s15 7 15 19Z" fill="#2fa47a"/>
+      <path d="M28 105l2-6 2 6ZM35 103l2-6 2 6ZM42 105l2-6 2 6ZM95 105l2-6 2 6ZM102 103l2-6 2 6ZM109 105l2-6 2 6Z" fill="#fff6dc" stroke="#d0a35a" stroke-width=".8" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</div>
 <noscript><p style="padding:24px">This tracker needs JavaScript turned on in your browser.</p></noscript>
 
 <script>
@@ -672,7 +738,7 @@ let storageMsg = '';
 function defaultState() {
   return {
     version: 2,
-    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto', dropInFee: 20, freeFirstDropIn: true },
+    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto', dropInFee: 20, freeFirstDropIn: true, mascot: true },
     float: { amount: 0, note: '', updatedAt: null },
     categories: [...DEFAULT_CATEGORIES],
     budgets: Object.fromEntries(DEFAULT_CATEGORIES.map(c => [c, 0])),
@@ -699,6 +765,7 @@ function normalizeState(raw) {
   if (!['auto', 'light', 'dark'].includes(s.settings.theme)) s.settings.theme = 'auto';
   s.settings.dropInFee = Math.max(0, round2(s.settings.dropInFee));
   s.settings.freeFirstDropIn = s.settings.freeFirstDropIn !== false;
+  s.settings.mascot = s.settings.mascot !== false;
   if (raw.float) s.float = { amount: round2(raw.float.amount), note: String(raw.float.note || ''), updatedAt: raw.float.updatedAt || null };
 
   const catList = Array.isArray(raw.categories) ? raw.categories.map(c => String(c ?? '').trim()).filter(Boolean) : [];
@@ -824,6 +891,7 @@ function commit(text, opts = {}) {
   }
   save();
   render();
+  dragonReact(opts.react !== undefined ? opts.react : opts.type);
 }
 
 function undoable(message, snapshot, label) {
@@ -1140,6 +1208,91 @@ function applyTheme() {
   const t = state.settings.theme;
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
   else delete document.documentElement.dataset.theme;
+  const d = $('#dragon');
+  if (d) d.hidden = !state.settings.mascot;
+}
+
+/* ---------- Dragon mascot ---------- */
+const DRAGON_LINES = {
+  payment: ['Ka-ching! 💰', 'Another paddler paid up!', 'Payment logged. Paddles up!'],
+  dropin: ['Welcome aboard, drop-in!', 'More paddlers, more splash!'],
+  expense: ['Receipt filed away 📎', 'Logged it. Spend wisely!'],
+  member: ['New paddler in the boat! 🛶', 'The crew grows!'],
+  import: ['Phew, that was a lot of rows!', 'All in. I counted every one.'],
+  reimburse: ['Paid back. Everyone’s square!'],
+  delete: ['Gone! (Psst, there’s an Undo.)'],
+  plan: ['Fee plan saved!'],
+  float: ['Float set. Smooth sailing!'],
+  backup: ['Backed up! Safe and sound 🐉'],
+};
+const DRAGON_FACTS = [
+  'Dragon boat racing goes back more than 2,000 years!',
+  'A standard boat holds 20 paddlers, plus a drummer and a steersperson.',
+  'The drummer sets the pace. I’d be great at it.',
+  'Racing boats wear a dragon head and tail. Just like me!',
+  'Before a boat’s first race, its dragon eyes are dotted to wake it up.',
+  'Paddles up! 🛶',
+];
+let dragonTimer = 0, dragonLast = 0, dragonTipCount = 0;
+const pickOne = list => list[Math.floor(Math.random() * list.length)];
+function dragonSay(text, ms = 4200) {
+  const d = $('#dragon');
+  if (!d || d.hidden || !text) return;
+  $('#dragonBubble').textContent = text;
+  d.classList.add('peek', 'talking');
+  dragonLast = Date.now();
+  clearTimeout(dragonTimer);
+  dragonTimer = setTimeout(() => d.classList.remove('peek', 'talking'), ms);
+}
+function dragonReact(type) {
+  if (DRAGON_LINES[type] && Date.now() - dragonLast > 2500) dragonSay(pickOne(DRAGON_LINES[type]));
+}
+/** Every so often, a gentle nudge about something worth checking. */
+function dragonTip() {
+  const t = totals(), c = statusCounts(), tips = [];
+  if (c.overdue) tips.push(`${plural(c.overdue, 'paddler is', 'paddlers are')} overdue on fees.`);
+  if (t.pending > 0) tips.push(`${money(t.pending)} is waiting to be paid back to someone.`);
+  if (t.dropOwing > 0) tips.push(`Drop-ins still owe ${money(t.dropOwing)}.`);
+  const noPhoto = state.expenses.filter(e => !e.photos.length).length;
+  if (noPhoto) tips.push(`${plural(noPhoto, 'expense is', 'expenses are')} missing a receipt photo.`);
+  if ((state.members.length || state.expenses.length) && !state.isSample && daysSince(state.lastBackupAt) > BACKUP_NAG_DAYS) tips.push('It’s been a while since your last backup!');
+  tips.push('Tip: paste your bank’s e-Transfer list into Import / Export.', 'Tip: drag receipt photos straight onto an expense.', 'Click me for a dragon boat fun fact!');
+  dragonTipCount++;
+  dragonSay(pickOne(tips), 6500);
+}
+function dragonGreet() {
+  let seen = false;
+  try { seen = sessionStorage.getItem('dragonGreeted') === '1'; sessionStorage.setItem('dragonGreeted', '1'); } catch (_) { /* fine */ }
+  if (seen) return;
+  const h = new Date().getHours();
+  const hello = h < 12 ? 'Good morning!' : h < 18 ? 'Good afternoon!' : 'Good evening!';
+  dragonSay(`${hello} ${state.members.length || state.expenses.length ? 'Ready to paddle through the books?' : 'I’m here to help with the team’s books.'}`, 5000);
+}
+function initDragon() {
+  const d = $('#dragon'), btn = $('#dragonBtn');
+  btn.addEventListener('click', () => {
+    if (d.classList.contains('talking')) { clearTimeout(dragonTimer); d.classList.remove('peek', 'talking'); return; }
+    dragonSay(pickOne(DRAGON_FACTS), 5500);
+    d.classList.add('wiggle');
+    setTimeout(() => d.classList.remove('wiggle'), 650);
+  });
+  // eyes follow the pointer
+  let frame = 0;
+  document.addEventListener('mousemove', e => {
+    if (frame || d.hidden) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const r = btn.getBoundingClientRect();
+      const dx = clamp((e.clientX - (r.left + r.width / 2)) / 250, -1, 1) * 2.6;
+      const dy = clamp((e.clientY - (r.top + r.height * 0.52)) / 250, -1, 1) * 2.4;
+      btn.querySelectorAll('.dg-pupil').forEach(p => { p.style.transform = `translate(${dx}px, ${dy}px)`; });
+    });
+  });
+  setTimeout(dragonGreet, 1400);
+  setInterval(() => {
+    if (d.hidden || modalIsOpen() || document.visibilityState !== 'visible' || dragonTipCount >= 4) return;
+    if (Date.now() - dragonLast > 150000) dragonTip();
+  }, 30000);
 }
 
 function renderHeader() {
@@ -1704,6 +1857,7 @@ function viewSettings() {
         <label class="field"><span>Appearance</span><select name="theme">
           ${[['auto', 'Match my computer'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${s.theme === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></label>
+        <div class="field"><span>Mascot</span><label class="check" style="min-height:34px"><input type="checkbox" name="mascot" ${s.mascot ? 'checked' : ''}> Show the peeking dragon 🐉</label></div>
       </div>
     </div>
     <div class="row-end"><button class="btn primary" type="submit">Save settings</button></div>
@@ -2029,7 +2183,7 @@ function openMemberModal(id, prefill = {}) {
         if (m.feeTarget !== fee) changes.push(`fee ${money(m.feeTarget)} → ${money(fee)}`);
         if (m.planId !== planId) changes.push(planId ? `plan → ${plans.find(p => p.id === planId).name}` : 'removed from plan');
         Object.assign(m, fields, { updatedAt: now });
-        commit(`Updated ${name}’s details${changes.length ? ` (${changes.join(', ')})` : ''}`, { type: 'member' });
+        commit(`Updated ${name}’s details${changes.length ? ` (${changes.join(', ')})` : ''}`, { type: 'member', react: null });
         toast('Member updated');
       } else {
         state.members.push({ id: uid(), ...fields, payments: [], createdAt: now, updatedAt: now });
@@ -3785,6 +3939,28 @@ async function downloadBackup() {
   download(`${fileSlug()}-backup-${todayStr()}.json`, JSON.stringify(payload), 'application/json');
   toast(`Backup downloaded${receipts.length ? ` with ${plural(receipts.length, 'receipt photo')}` : ''}. Keep it somewhere safe.${photoNote}`, { ms: photoNote ? 8000 : 4000 });
   render();
+  dragonReact('backup');
+}
+/**
+ * What this computer has that the backup doesn't (and the other way round), using the activity history rather than
+ * clock times: a restore counts as a change, and two computers' clocks can disagree.
+ */
+const isRestoreEntry = a => /^Restored backup|^Undid: restore backup/.test(a.text || '');
+function compareWithBackup(data) {
+  if (state.isSample) return { localOnly: [], backupOnly: [] };
+  const theirs = Array.isArray(data.activity) ? data.activity.filter(a => a && a.id && a.at) : null;
+  if (!theirs || !theirs.length) { // a backup with no history: fall back to the last-change times
+    const since = data.lastModified || '';
+    return { localOnly: state.activity.filter(a => !isRestoreEntry(a) && a.at > since), backupOnly: [] };
+  }
+  const theirIds = new Set(theirs.map(a => a.id)), ourIds = new Set(state.activity.map(a => a.id));
+  // the history keeps the latest 300 entries; anything older than the other side's oldest can't be compared
+  const theirOldest = theirs.length >= 300 ? theirs[theirs.length - 1].at : '';
+  const ourOldest = state.activity.length >= 300 ? state.activity[state.activity.length - 1].at : '';
+  return {
+    localOnly: state.activity.filter(a => !theirIds.has(a.id) && !isRestoreEntry(a) && a.at >= theirOldest),
+    backupOnly: theirs.filter(a => !ourIds.has(a.id) && !isRestoreEntry(a) && a.at >= ourOldest),
+  };
 }
 function readRestoreFile(file) {
   if (!file) return;
@@ -3796,10 +3972,29 @@ function readRestoreFile(file) {
     if (!data || !Array.isArray(data.members) || !Array.isArray(data.expenses)) { toast('That file isn’t a tracker backup.', { error: true }); return; }
     const receipts = Array.isArray(obj.receipts) ? obj.receipts.filter(r => r && r.id && r.data) : [];
     const nPay = data.members.reduce((n, m) => n + (Array.isArray(m.payments) ? m.payments.length : 0), 0);
+    const nDrop = Array.isArray(data.dropIns) ? data.dropIns.length : 0;
+    const { localOnly, backupOnly } = compareWithBackup(data);
+    const lost = localOnly.length;
+    const hasData = state.members.length || state.expenses.length || state.dropIns.length;
+    const when = iso => (iso ? fmtTS(iso) : 'no changes yet');
+    let extraHtml = `<div class="restore-compare">
+        <div><span class="muted small">This backup’s last change</span><strong>${esc(when(data.lastModified))}</strong></div>
+        <div><span class="muted small">This computer’s last change</span><strong>${esc(when(state.lastModified))}</strong></div>
+      </div>`;
+    if (lost) {
+      extraHtml += `<div class="notice crit" style="margin:0">${icon('alert')}<div class="notice-text">
+          <strong>This computer has ${plural(lost, 'change')} that ${lost === 1 ? 'isn’t' : 'aren’t'} in this backup.</strong> Restoring will lose ${lost === 1 ? 'it' : 'them'}:
+          <ul>${localOnly.slice(0, 6).map(a => `<li>${esc(a.text)} <span class="muted small">(${esc(fmtTS(a.at))})</span></li>`).join('')}${lost > 6 ? `<li>…and ${lost - 6} more</li>` : ''}</ul>
+          ${backupOnly.length ? `The backup also has ${plural(backupOnly.length, 'change')} this computer doesn’t, so both computers were used since they last matched. You may need to re-enter some things by hand. ` : ''}Download a backup of this computer first so nothing is gone for good.
+        </div><button type="button" class="btn sm" data-action="backup">${icon('download')}Back up this computer first</button></div>`;
+    } else if (hasData && !state.isSample) {
+      extraHtml += `<div class="notice" style="margin:0">${icon('checkCircle')}<span class="notice-text">Everything on this computer is already in this backup${backupOnly.length ? `, and the backup has ${plural(backupOnly.length, 'newer change')}` : ''}. Nothing will be lost.</span></div>`;
+    }
     confirmDialog({
-      title: 'Restore this backup?',
-      message: `Backup${obj.exportedAt ? ' from ' + fmtTS(obj.exportedAt) : ''}: ${plural(data.members.length, 'member')}, ${plural(nPay, 'payment')}, ${plural(data.expenses.length, 'expense')}${receipts.length ? `, ${plural(receipts.length, 'receipt photo')}` : ''}. It replaces everything currently in the tracker.`,
-      confirmLabel: 'Restore backup',
+      title: lost ? 'Restoring will lose changes on this computer' : 'Restore this backup?',
+      message: `Backup${obj.exportedAt ? ' made ' + fmtTS(obj.exportedAt) : ''}: ${plural(data.members.length, 'member')}, ${plural(nPay, 'payment')}, ${plural(nDrop, 'drop-in visit')}, ${plural(data.expenses.length, 'expense')}${receipts.length ? `, ${plural(receipts.length, 'receipt photo')}` : ''}. It replaces everything currently in the tracker on this computer.`,
+      extraHtml,
+      confirmLabel: lost ? 'Replace anyway' : 'Restore backup',
       danger: true,
       onConfirm: async () => {
         let photoProblem = false;
@@ -3839,7 +4034,10 @@ function saveSettings(form) {
   const dropFee = parseMoney(fd.dropInFee);
   s.dropInFee = dropFee != null && dropFee > 0 ? dropFee : 0;
   s.freeFirstDropIn = fd.freeFirstDropIn === 'on';
+  const mascotOn = fd.mascot === 'on' && !s.mascot;
+  s.mascot = fd.mascot === 'on';
   commit('Updated team settings', { type: 'settings' });
+  if (mascotOn) setTimeout(() => dragonSay('I’m back! 🐉'), 300);
   toast('Settings saved');
 }
 
@@ -4161,6 +4359,7 @@ setInterval(() => {
 
 ui.tab = tabFromHash();
 render();
+initDragon();
 cleanUpPhotos();
 })();
 </script>

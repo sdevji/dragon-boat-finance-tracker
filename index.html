@@ -449,15 +449,55 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 .toast button { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
 
 /* ---------- Dragon mascot: peeks up from the bottom-left corner ---------- */
-.dragon { position: fixed; left: 14px; bottom: 0; z-index: 90; width: 112px; pointer-events: none; }
+.dragon { position: fixed; left: 14px; bottom: 0; z-index: 90; width: 124px; pointer-events: none; }
 .dragon-btn {
   display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto;
-  transform: translateY(74%); transform-origin: 50% 100%; transition: transform .5s cubic-bezier(.34, 1.56, .64, 1);
+  transform: translateY(72%); transform-origin: 50% 100%; transition: transform .5s cubic-bezier(.34, 1.56, .64, 1);
 }
-.dragon-btn:hover { transform: translateY(64%); }
+.dragon-btn:hover { transform: translateY(62%); }
 .dragon-btn:focus-visible { box-shadow: none; outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
-.dragon.peek .dragon-btn { transform: translateY(14%) rotate(7deg); }
-.dragon svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .18)); }
+.dragon.peek .dragon-btn { transform: translateY(10%) rotate(6deg); }
+.dragon svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .22)); }
+:root[data-theme="dark"] .dragon svg { filter: drop-shadow(0 0 1.5px rgba(160, 190, 255, .45)) drop-shadow(0 4px 10px rgba(0, 0, 0, .5)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dragon svg { filter: drop-shadow(0 0 1.5px rgba(160, 190, 255, .45)) drop-shadow(0 4px 10px rgba(0, 0, 0, .5)); } }
+/* idle life: breathing, a gentle head tilt, ear twitches, a wagging tail */
+.dragon .dg-body { transform-box: fill-box; transform-origin: 50% 100%; animation: dg-breathe 3.4s ease-in-out infinite; }
+.dragon .dg-head { transform-box: fill-box; transform-origin: 50% 100%; animation: dg-tilt 7s ease-in-out infinite; }
+.dragon .dg-ear-l { transform-box: fill-box; transform-origin: 100% 100%; animation: dg-twitch-l 6s ease-in-out infinite; }
+.dragon .dg-ear-r { transform-box: fill-box; transform-origin: 0% 100%; animation: dg-twitch-r 6s ease-in-out 1.7s infinite; }
+.dragon .dg-tail { transform-box: fill-box; transform-origin: 0% 100%; animation: dg-wag 1.8s ease-in-out infinite; }
+.dragon .dg-wing-l { transform-box: fill-box; transform-origin: 100% 70%; }
+.dragon .dg-wing-r { transform-box: fill-box; transform-origin: 0% 70%; }
+.dragon.excited .dg-wing-l { animation: dg-flap-l .3s ease-in-out 8 alternate; }
+.dragon.excited .dg-wing-r { animation: dg-flap-r .3s ease-in-out 8 alternate; }
+.dragon .dg-mouth { transform-box: fill-box; transform-origin: 50% 30%; transform: scaleY(0); }
+.dragon.talking .dg-mouth { animation: dg-talk .2s ease-in-out 8 alternate; }
+.dragon.talking .dg-smile { animation: dg-hide 1.6s step-end; }
+@keyframes dg-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 1.03); } }
+@keyframes dg-tilt { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg); } }
+@keyframes dg-twitch-l { 0%, 86%, 100% { transform: rotate(0); } 90% { transform: rotate(-14deg); } 94% { transform: rotate(4deg); } }
+@keyframes dg-twitch-r { 0%, 86%, 100% { transform: rotate(0); } 90% { transform: rotate(14deg); } 94% { transform: rotate(-4deg); } }
+@keyframes dg-wag { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+@keyframes dg-flap-l { from { transform: rotate(0); } to { transform: rotate(-24deg); } }
+@keyframes dg-flap-r { from { transform: rotate(0); } to { transform: rotate(24deg); } }
+@keyframes dg-talk { from { transform: scaleY(.25); } to { transform: scaleY(1); } }
+@keyframes dg-hide { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+/* the baby crew paddling a dragon boat along the bottom of the screen */
+.dragon-boat { position: fixed; left: 0; bottom: 0; z-index: 85; width: 300px; pointer-events: none; }
+.dragon-boat svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .15)); }
+.dragon-boat.sailing { animation: bb-sail 15s linear forwards; }
+.dragon-boat .bb-boat { animation: bb-bob .9s ease-in-out infinite alternate; }
+.dragon-boat .bb-paddle { transform-box: fill-box; transform-origin: 50% 0%; animation: bb-stroke .9s ease-in-out infinite; }
+.dragon-boat .bb-arm { transform-box: fill-box; transform-origin: 100% 100%; animation: bb-drum .45s ease-in-out infinite alternate; }
+.dragon-boat .bb-waves { animation: bb-waves 1s linear infinite; }
+.dragon-boat .bb-eyes { transform-box: fill-box; transform-origin: 50% 50%; animation: bb-blink 4.2s infinite; }
+@keyframes bb-sail { from { transform: translateX(-320px); } to { transform: translateX(calc(100vw + 20px)); } }
+@keyframes bb-bob { from { transform: translateY(0) rotate(-.6deg); } to { transform: translateY(-2.5px) rotate(.6deg); } }
+@keyframes bb-stroke { 0%, 100% { transform: rotate(-32deg); } 55% { transform: rotate(26deg); } }
+@keyframes bb-drum { from { transform: rotate(-30deg); } to { transform: rotate(18deg); } }
+@keyframes bb-waves { from { transform: translateX(0); } to { transform: translateX(-40px); } }
+@keyframes bb-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
 .dragon-bubble {
   position: absolute; left: 96%; bottom: 66%; width: max-content; max-width: 230px; padding: 9px 12px; border-radius: 14px;
   background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
@@ -474,9 +514,11 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 .dragon.wiggle .dragon-btn { animation: dg-wiggle .6s ease; }
 @keyframes dg-blink { 0%, 92%, 100% { transform: scaleY(0); } 95% { transform: scaleY(1); } }
 @keyframes dg-wiggle { 0%, 100% { rotate: 0deg; } 25% { rotate: -7deg; } 75% { rotate: 7deg; } }
+/* respect "reduce motion" unless the person has asked for the dragon to animate anyway (Settings → Mascot) */
 @media (prefers-reduced-motion: reduce) {
-  .dragon-btn, .dragon-bubble { transition: none; }
-  .dragon .dg-lid, .dragon.wiggle .dragon-btn { animation: none; }
+  :root:not(.motion-on) .dragon-btn, :root:not(.motion-on) .dragon-bubble { transition: none; }
+  :root:not(.motion-on) .dragon *, :root:not(.motion-on) .dragon.wiggle .dragon-btn { animation: none !important; }
+  :root:not(.motion-on) .dragon-boat { display: none !important; }
 }
 
 /* ---------- Responsive ---------- */
@@ -498,12 +540,13 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
   .modal-backdrop { padding: 0; align-items: end; }
   .modal { border-radius: 14px 14px 0 0; max-height: 92vh; }
   tr.history-row > td { padding-left: 16px; }
-  .dragon { width: 84px; left: 6px; }
-  .dragon-btn { transform: translateY(78%); }
+  .dragon { width: 92px; left: 6px; }
+  .dragon-btn { transform: translateY(76%); }
+  .dragon-boat { width: 210px; }
   .dragon-bubble { max-width: 190px; }
 }
 @media print {
-  .topbar .top-right, .tabs, .toolbar, td.actions, .icon-btn, .notice, .dragon { display: none !important; }
+  .topbar .top-right, .tabs, .toolbar, td.actions, .icon-btn, .notice, .dragon, .dragon-boat { display: none !important; }
   .topbar { position: static; }
   body { background: #fff; }
 }
@@ -536,32 +579,40 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 <div class="dragon" id="dragon" hidden>
   <div class="dragon-bubble" id="dragonBubble" aria-hidden="true"></div>
   <button type="button" class="dragon-btn" id="dragonBtn" aria-label="Dragon mascot: click for a dragon boat fun fact">
-    <svg viewBox="0 0 140 120" aria-hidden="true">
-      <defs><linearGradient id="dgSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4cc79a"/><stop offset="1" stop-color="#2fa47a"/></linearGradient></defs>
-      <path d="M50 40C42 26 43 13 51 5c2 12 6 22 12 29Z" fill="#f6dfa8" stroke="#d0a35a" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="M90 40c8-14 7-27-1-35-2 12-6 22-12 29Z" fill="#f6dfa8" stroke="#d0a35a" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="M59 34l6-13 5 10 5-10 6 13Z" fill="#ff8a65"/>
-      <path d="M33 60C18 54 11 44 13 35c9 6 18 10 27 14Z" fill="#2a9670"/>
-      <path d="M107 60c15-6 22-16 20-25-9 6-18 10-27 14Z" fill="#2a9670"/>
-      <ellipse cx="70" cy="68" rx="41" ry="36" fill="url(#dgSkin)"/>
-      <ellipse cx="70" cy="88" rx="27" ry="17" fill="#9be3c3"/>
-      <ellipse cx="62" cy="83" rx="2.6" ry="2" fill="#1d6a4e"/>
-      <ellipse cx="78" cy="83" rx="2.6" ry="2" fill="#1d6a4e"/>
-      <path d="M61 93q9 7 18 0" fill="none" stroke="#1d6a4e" stroke-width="2.4" stroke-linecap="round"/>
-      <ellipse cx="40" cy="80" rx="7.5" ry="4.5" fill="#ff9fb3" opacity=".75"/>
-      <ellipse cx="100" cy="80" rx="7.5" ry="4.5" fill="#ff9fb3" opacity=".75"/>
-      <ellipse cx="54" cy="62" rx="9.5" ry="11" fill="#fff"/>
-      <ellipse cx="86" cy="62" rx="9.5" ry="11" fill="#fff"/>
-      <g class="dg-pupil"><circle cx="55" cy="64" r="5.8" fill="#1d1d1f"/><circle cx="57.3" cy="61.2" r="2" fill="#fff"/></g>
-      <g class="dg-pupil"><circle cx="85" cy="64" r="5.8" fill="#1d1d1f"/><circle cx="87.3" cy="61.2" r="2" fill="#fff"/></g>
-      <ellipse class="dg-lid" cx="54" cy="62" rx="10.2" ry="11.6" fill="#40b98b"/>
-      <ellipse class="dg-lid" cx="86" cy="62" rx="10.2" ry="11.6" fill="#40b98b"/>
-      <path d="M22 120c0-12 6-19 15-19s14 7 14 19Z" fill="#2fa47a"/>
-      <path d="M89 120c0-12 5-19 14-19s15 7 15 19Z" fill="#2fa47a"/>
-      <path d="M28 105l2-6 2 6ZM35 103l2-6 2 6ZM42 105l2-6 2 6ZM95 105l2-6 2 6ZM102 103l2-6 2 6ZM109 105l2-6 2 6Z" fill="#fff6dc" stroke="#d0a35a" stroke-width=".8" stroke-linejoin="round"/>
+    <svg viewBox="0 0 160 140" aria-hidden="true">
+      <defs>
+        <linearGradient id="dgHide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4566"/><stop offset="1" stop-color="#222940"/></linearGradient>
+        <radialGradient id="dgIris" cx="45%" cy="35%" r="65%"><stop offset="0" stop-color="#e4fbb0"/><stop offset=".55" stop-color="#93d64f"/><stop offset="1" stop-color="#4c9328"/></radialGradient>
+      </defs>
+      <g class="dg-body">
+        <g class="dg-tail"><path d="M136 140c2-16 12-24 16-36 3 8 2 18-4 26 4 1 6 5 5 10Z" fill="#283048" stroke="#4d5b85" stroke-width="1.2" stroke-linejoin="round"/><path d="M152 104l-6-9 10 3Z" fill="#5ad1c4"/></g>
+        <g class="dg-wing-l"><path d="M40 86C26 68 12 64 4 72c7 1 10 7 8 14 7-3 12 2 11 9 6-4 12-2 15 3Z" fill="#1c2234" stroke="#4d5b85" stroke-width="1.2" stroke-linejoin="round"/></g>
+        <g class="dg-wing-r"><path d="M120 86c14-18 28-22 36-14-7 1-10 7-8 14-7-3-12 2-11 9-6-4-12-2-15 3Z" fill="#1c2234" stroke="#4d5b85" stroke-width="1.2" stroke-linejoin="round"/></g>
+        <g class="dg-head">
+          <path d="M60 52c-5-12-4-22 2-29 2 10 5 17 9 24Z" fill="#d3d9ea" stroke="#9aa3bd" stroke-width="1.2" stroke-linejoin="round"/>
+          <path d="M100 52c5-12 4-22-2-29-2 10-5 17-9 24Z" fill="#d3d9ea" stroke="#9aa3bd" stroke-width="1.2" stroke-linejoin="round"/>
+          <g class="dg-ear-l"><path d="M40 72C24 60 19 46 24 36c11 7 20 18 26 28Z" fill="url(#dgHide)" stroke="#4d5b85" stroke-width="1.2" stroke-linejoin="round"/></g>
+          <g class="dg-ear-r"><path d="M120 72c16-12 21-26 16-36-11 7-20 18-26 28Z" fill="url(#dgHide)" stroke="#4d5b85" stroke-width="1.2" stroke-linejoin="round"/></g>
+          <ellipse cx="80" cy="84" rx="47" ry="40" fill="url(#dgHide)" stroke="#4d5b85" stroke-width="1.2"/>
+          <circle cx="72" cy="54" r="2.4" fill="#5ad1c4" opacity=".75"/><circle cx="80" cy="50" r="2.8" fill="#5ad1c4" opacity=".75"/><circle cx="88" cy="54" r="2.4" fill="#5ad1c4" opacity=".75"/>
+          <ellipse cx="80" cy="106" rx="30" ry="16" fill="#3a4569"/>
+          <ellipse cx="71" cy="101" rx="2.6" ry="1.9" fill="#12162a"/><ellipse cx="89" cy="101" rx="2.6" ry="1.9" fill="#12162a"/>
+          <path class="dg-smile" d="M69 111q11 8 22 0" fill="none" stroke="#12162a" stroke-width="2.4" stroke-linecap="round"/>
+          <ellipse class="dg-mouth" cx="80" cy="113" rx="6.5" ry="5" fill="#7a2840"/>
+          <ellipse cx="45" cy="97" rx="8" ry="5" fill="#ff8fa8" opacity=".5"/><ellipse cx="115" cy="97" rx="8" ry="5" fill="#ff8fa8" opacity=".5"/>
+          <ellipse cx="59" cy="78" rx="14" ry="15" fill="#f5f9e8"/><ellipse cx="101" cy="78" rx="14" ry="15" fill="#f5f9e8"/>
+          <g class="dg-pupil"><circle cx="60" cy="80" r="10" fill="url(#dgIris)"/><circle cx="60" cy="81" r="5.6" fill="#0f1220"/><circle cx="64" cy="75" r="3" fill="#fff"/><circle cx="56" cy="85" r="1.3" fill="#fff"/></g>
+          <g class="dg-pupil"><circle cx="100" cy="80" r="10" fill="url(#dgIris)"/><circle cx="100" cy="81" r="5.6" fill="#0f1220"/><circle cx="104" cy="75" r="3" fill="#fff"/><circle cx="96" cy="85" r="1.3" fill="#fff"/></g>
+          <ellipse class="dg-lid" cx="59" cy="78" rx="14.8" ry="15.8" fill="#303956"/><ellipse class="dg-lid" cx="101" cy="78" rx="14.8" ry="15.8" fill="#303956"/>
+        </g>
+      </g>
+      <path d="M24 140c0-14 7-22 17-22s17 8 17 22Z" fill="#283048" stroke="#4d5b85" stroke-width="1.2"/>
+      <path d="M102 140c0-14 7-22 17-22s17 8 17 22Z" fill="#283048" stroke="#4d5b85" stroke-width="1.2"/>
+      <path d="M30 125l2-6 2 6ZM37 122l2-6 2 6ZM44 122l2-6 2 6ZM51 125l2-6 2 6ZM108 125l2-6 2 6ZM115 122l2-6 2 6ZM122 122l2-6 2 6ZM129 125l2-6 2 6Z" fill="#eef1f8" stroke="#9aa3bd" stroke-width=".8" stroke-linejoin="round"/>
     </svg>
   </button>
 </div>
+<div class="dragon-boat" id="dragonBoat" hidden aria-hidden="true"></div>
 <noscript><p style="padding:24px">This tracker needs JavaScript turned on in your browser.</p></noscript>
 
 <script>
@@ -738,7 +789,7 @@ let storageMsg = '';
 function defaultState() {
   return {
     version: 2,
-    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto', dropInFee: 20, freeFirstDropIn: true, mascot: true },
+    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto', dropInFee: 20, freeFirstDropIn: true, mascot: true, mascotMotion: false },
     float: { amount: 0, note: '', updatedAt: null },
     categories: [...DEFAULT_CATEGORIES],
     budgets: Object.fromEntries(DEFAULT_CATEGORIES.map(c => [c, 0])),
@@ -766,6 +817,7 @@ function normalizeState(raw) {
   s.settings.dropInFee = Math.max(0, round2(s.settings.dropInFee));
   s.settings.freeFirstDropIn = s.settings.freeFirstDropIn !== false;
   s.settings.mascot = s.settings.mascot !== false;
+  s.settings.mascotMotion = s.settings.mascotMotion === true;
   if (raw.float) s.float = { amount: round2(raw.float.amount), note: String(raw.float.note || ''), updatedAt: raw.float.updatedAt || null };
 
   const catList = Array.isArray(raw.categories) ? raw.categories.map(c => String(c ?? '').trim()).filter(Boolean) : [];
@@ -1210,7 +1262,9 @@ function applyTheme() {
   else delete document.documentElement.dataset.theme;
   const d = $('#dragon');
   if (d) d.hidden = !state.settings.mascot;
+  document.documentElement.classList.toggle('motion-on', state.settings.mascotMotion);
 }
+const reducedMotion = () => !state.settings.mascotMotion && !!window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Dragon mascot ---------- */
 const DRAGON_LINES = {
@@ -1244,8 +1298,75 @@ function dragonSay(text, ms = 4200) {
   clearTimeout(dragonTimer);
   dragonTimer = setTimeout(() => d.classList.remove('peek', 'talking'), ms);
 }
+function dragonCheer() {
+  const d = $('#dragon');
+  d.classList.remove('excited');
+  void d.offsetWidth; // restart the wing flap
+  d.classList.add('excited');
+  setTimeout(() => d.classList.remove('excited'), 2500);
+}
 function dragonReact(type) {
-  if (DRAGON_LINES[type] && Date.now() - dragonLast > 2500) dragonSay(pickOne(DRAGON_LINES[type]));
+  if (!DRAGON_LINES[type] || Date.now() - dragonLast <= 2500) return;
+  dragonSay(pickOne(DRAGON_LINES[type]));
+  dragonCheer();
+  if (type === 'payment') sailBoat(false); // a victory lap, at most every few minutes
+}
+
+/* The baby crew: little copies of the mascot paddling a dragon boat in time, with a drummer and a steerer. */
+function babyDragon(x, y, dir = 1) {
+  return `<g transform="translate(${x} ${y}) scale(${dir} 1)">
+    <ellipse cx="0" cy="21" rx="8.5" ry="9" fill="#283048"/>
+    <path d="M-12-1c-6-4-7-10-5-14 4 3 7 7 9 11Z" fill="#303956" stroke="#4d5b85" stroke-width=".8"/>
+    <path d="M-6-8l1-7 4 6ZM2-9l3-6 1 7Z" fill="#d3d9ea"/>
+    <circle cx="0" cy="0" r="11" fill="url(#bbHide)" stroke="#4d5b85" stroke-width="1"/>
+    <ellipse cx="8" cy="5" rx="5.5" ry="4" fill="#3a4569"/>
+    <ellipse cx="-3.5" cy="6" rx="2.6" ry="1.6" fill="#ff8fa8" opacity=".6"/>
+    <g class="bb-eyes"><circle cx="1" cy="-2" r="3.4" fill="#f5f9e8"/><circle cx="1.8" cy="-1.6" r="2.3" fill="#8fd14f"/><circle cx="2" cy="-1.4" r="1.2" fill="#0f1220"/><circle cx="2.7" cy="-2.9" r=".7" fill="#fff"/><circle cx="7.6" cy="-2" r="3" fill="#f5f9e8"/><circle cx="8.3" cy="-1.6" r="2" fill="#8fd14f"/><circle cx="8.5" cy="-1.4" r="1" fill="#0f1220"/></g>
+  </g>`;
+}
+function boatMarkup() {
+  const seats = [84, 118, 152, 186];
+  const paddle = x => `<g class="bb-paddle"><path d="M${x + 5} 58h3l2.5 28h-3Z" fill="#c8924f"/><rect x="${x + 4}" y="84" width="8" height="13" rx="3.5" fill="#e3a95c" stroke="#a8761f" stroke-width=".8"/></g>`;
+  const wave = (y, w) => `<path d="M-40 ${y}q10-${w} 20 0${' t20 0'.repeat(18)}" fill="none" stroke-linecap="round"`;
+  return `<svg viewBox="0 0 300 110" aria-hidden="true">
+    <defs><linearGradient id="bbHide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4566"/><stop offset="1" stop-color="#222940"/></linearGradient></defs>
+    <g class="bb-boat">
+      <path d="M50 54 18 102" stroke="#8a5a2b" stroke-width="3" stroke-linecap="round"/><ellipse cx="17" cy="101" rx="3.5" ry="8" transform="rotate(34 17 101)" fill="#e3a95c" stroke="#a8761f" stroke-width=".8"/>
+      ${babyDragon(42, 38, 1)}
+      ${seats.map(x => babyDragon(x, 45, 1)).join('')}
+      ${babyDragon(244, 47, -1)}
+      <g class="bb-arm"><path d="M238 60 229 52" stroke="#283048" stroke-width="3.2" stroke-linecap="round"/><circle cx="228" cy="51" r="2.2" fill="#c8924f"/></g>
+      <ellipse cx="226" cy="66" rx="7" ry="8" fill="#f2c14e" stroke="#a8761f" stroke-width="1"/><ellipse cx="226" cy="60" rx="7" ry="2.5" fill="#fbe7b0" stroke="#a8761f" stroke-width="1"/>
+      <path d="M20 74C12 66 10 56 16 48c2 10 6 16 12 22Z" fill="#f2c14e" stroke="#c7922a" stroke-width="1"/>
+      <path d="M18 74h248q8 0 14-8l2 4q-6 20-32 20H52q-26 0-34-16Z" fill="#d9433a" stroke="#8f241d" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M24 79h242" stroke="#f2c14e" stroke-width="2.5"/>
+      <path d="M262 74c4-12 10-20 20-22 10-2 16 4 14 10-4-1-8 0-11 4l-7 10Z" fill="#283048" stroke="#f2c14e" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M280 52l1-8 4 7Z" fill="#f2c14e"/><circle cx="286" cy="57" r="2.2" fill="#9fe36b"/><circle cx="286.6" cy="56.4" r=".7" fill="#fff"/>
+      ${seats.map(paddle).join('')}
+    </g>
+    <g class="bb-waves">${wave(97, 4)} stroke="#7cc4f2" stroke-width="3"/>${wave(104, 3)} stroke="#a9dcf8" stroke-width="2.5" opacity=".85"/></g>
+  </svg>`;
+}
+let boatLast = 0, boatSails = 0;
+/** Sends the crew across the bottom of the screen (behind the big dragon). Quietly does nothing if they're already out. */
+function sailBoat(force) {
+  const b = $('#dragonBoat');
+  if (!b || $('#dragon').hidden || b.classList.contains('sailing')) return false;
+  if (reducedMotion()) return false;
+  if (!force && (Date.now() - boatLast < 180000 || boatSails >= 5)) return false;
+  boatLast = Date.now();
+  boatSails++;
+  if (!b.firstChild) b.innerHTML = boatMarkup();
+  b.hidden = false;
+  b.classList.add('sailing');
+  const done = e => {
+    if (e.animationName !== 'bb-sail') return;
+    b.classList.remove('sailing');
+    b.hidden = true;
+    b.removeEventListener('animationend', done);
+  };
+  b.addEventListener('animationend', done);
+  return true;
 }
 /** Every so often, a gentle nudge about something worth checking. */
 function dragonTip() {
@@ -1267,14 +1388,18 @@ function dragonGreet() {
   const h = new Date().getHours();
   const hello = h < 12 ? 'Good morning!' : h < 18 ? 'Good afternoon!' : 'Good evening!';
   dragonSay(`${hello} ${state.members.length || state.expenses.length ? 'Ready to paddle through the books?' : 'I’m here to help with the team’s books.'}`, 5000);
+  dragonCheer();
+  setTimeout(() => { if (sailBoat(true)) setTimeout(() => dragonSay('That’s my crew! 🛶', 3500), 3500); }, 2200);
 }
 function initDragon() {
   const d = $('#dragon'), btn = $('#dragonBtn');
   btn.addEventListener('click', () => {
     if (d.classList.contains('talking')) { clearTimeout(dragonTimer); d.classList.remove('peek', 'talking'); return; }
-    dragonSay(pickOne(DRAGON_FACTS), 5500);
     d.classList.add('wiggle');
     setTimeout(() => d.classList.remove('wiggle'), 650);
+    dragonCheer();
+    if (Math.random() < 0.4 && sailBoat(true)) dragonSay(pickOne(['Here comes my crew! 🛶', 'Paddles up, little ones!', 'Watch them go! Perfect timing.']), 4500);
+    else dragonSay(pickOne(DRAGON_FACTS), 5500);
   });
   // eyes follow the pointer
   let frame = 0;
@@ -1857,7 +1982,9 @@ function viewSettings() {
         <label class="field"><span>Appearance</span><select name="theme">
           ${[['auto', 'Match my computer'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${s.theme === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></label>
-        <div class="field"><span>Mascot</span><label class="check" style="min-height:34px"><input type="checkbox" name="mascot" ${s.mascot ? 'checked' : ''}> Show the peeking dragon 🐉</label></div>
+        <div class="field"><span>Mascot</span><label class="check" style="min-height:34px"><input type="checkbox" name="mascot" ${s.mascot ? 'checked' : ''}> Show the peeking dragon 🐉</label>
+          <label class="check"><input type="checkbox" name="mascotMotion" ${s.mascotMotion ? 'checked' : ''}> Animate it even when my computer asks for less motion</label>
+          ${window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches && !s.mascotMotion ? '<small class="hint">Your computer has animations turned down, so the dragon is sitting still and its crew stays home.</small>' : ''}</div>
       </div>
     </div>
     <div class="row-end"><button class="btn primary" type="submit">Save settings</button></div>
@@ -4035,9 +4162,12 @@ function saveSettings(form) {
   s.dropInFee = dropFee != null && dropFee > 0 ? dropFee : 0;
   s.freeFirstDropIn = fd.freeFirstDropIn === 'on';
   const mascotOn = fd.mascot === 'on' && !s.mascot;
+  const motionOn = fd.mascotMotion === 'on' && !s.mascotMotion;
   s.mascot = fd.mascot === 'on';
+  s.mascotMotion = fd.mascotMotion === 'on';
   commit('Updated team settings', { type: 'settings' });
   if (mascotOn) setTimeout(() => dragonSay('I’m back! 🐉'), 300);
+  else if (motionOn && s.mascot) setTimeout(() => { dragonSay('Wheee! Paddles up, crew! 🛶'); dragonCheer(); sailBoat(true); }, 300);
   toast('Settings saved');
 }
 

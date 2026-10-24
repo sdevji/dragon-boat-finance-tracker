@@ -88,9 +88,12 @@ Open an expense and use **Add photo**, drag photos in, or paste a screenshot. Ph
 ### The dragon 🐉
 
 A small dragon peeks up from the bottom-left corner:
-- It reacts when you record things, and now and then reminds you about overdue fees or a backup.
+- It breathes, blinks, twitches its ears, wags its tail and follows your mouse.
+- It flaps its wings and reacts when you record things, and now and then reminds you about overdue fees or a backup.
+- Now and then, its baby crew paddles a dragon boat across the bottom of the screen: on your first visit, as a victory lap after payments, and sometimes when you click it.
 - Click it for a dragon boat fun fact.
-- Turn it off under **Settings → Mascot**.
+
+Under **Settings → Mascot** you can turn it off. If your computer has animations turned down (on Windows: Settings → Accessibility → Visual effects → Animation effects), the dragon sits still and the crew stays home. Tick "Animate it even when my computer asks for less motion" to bring them back.
 
 ### Mistakes
 

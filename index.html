@@ -257,7 +257,7 @@ fieldset.field legend { padding: 0; margin-bottom: 5px; }
 .status-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .status-count { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; cursor: pointer; font-weight: 650; border-radius: 999px; }
 .status-count:hover .badge { filter: brightness(.96); }
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpi { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 22px; }
@@ -507,7 +507,7 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
    ===================================================================== */
 const STORAGE_KEY = 'dragonBoatFinanceTracker.v1';
 const DEFAULT_CATEGORIES = ['Equipment', 'Venue', 'Referees', 'Travel', 'Uniforms', 'Admin', 'Miscellaneous'];
-const METHODS = ['Cash', 'e-Transfer/Venmo', 'Credit', 'Check', 'Bank Transfer', 'Other'];
+const METHODS = ['Cash', 'e-Transfer', 'Credit', 'Cheque', 'Bank Transfer', 'Other'];
 const REIMB = {
   none: 'Paid from team funds (nothing to pay back)',
   pending: 'Pending reimbursement (someone paid out of pocket)',
@@ -522,15 +522,22 @@ const STATUS = {
   nofee: { label: 'No fee set', icon: 'minusCircle' },
 };
 const STATUS_ORDER = { overdue: 0, unpaid: 1, partial: 2, paid: 3, nofee: 4 };
+const DROP_STATUS = {
+  paid: { label: 'Paid', cls: 'b-paid', icon: 'checkCircle' },
+  partial: { label: 'Part paid', cls: 'b-partial', icon: 'halfCircle' },
+  unpaid: { label: 'Unpaid', cls: 'b-unpaid', icon: 'circle' },
+  free: { label: 'Free', cls: 'b-nofee', icon: 'minusCircle' },
+};
 const TABS = [
   ['dashboard', 'Dashboard'],
   ['members', 'Members & Fees'],
+  ['dropins', 'Drop-ins'],
   ['expenses', 'Expenses'],
   ['budget', 'Budget'],
   ['data', 'Import / Export'],
   ['settings', 'Settings'],
 ];
-const ACT_ICON = { payment: 'coins', expense: 'receipt', member: 'user', float: 'wallet', budget: 'chart', category: 'chart', plan: 'coins', import: 'upload', delete: 'trash', settings: 'gear', reimburse: 'check', edit: 'pencil' };
+const ACT_ICON = { payment: 'coins', dropin: 'users', expense: 'receipt', member: 'user', float: 'wallet', budget: 'chart', category: 'chart', plan: 'coins', import: 'upload', delete: 'trash', settings: 'gear', reimburse: 'check', edit: 'pencil' };
 const BACKUP_NAG_DAYS = 14;
 const MAX_PHOTO_EDGE = 1600;
 
@@ -665,12 +672,13 @@ let storageMsg = '';
 function defaultState() {
   return {
     version: 2,
-    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto' },
+    settings: { teamName: 'Dragon Boat Team', currency: '$', defaultFee: 0, defaultDueDate: '', budgetWarnPct: 80, theme: 'auto', dropInFee: 20, freeFirstDropIn: true },
     float: { amount: 0, note: '', updatedAt: null },
     categories: [...DEFAULT_CATEGORIES],
     budgets: Object.fromEntries(DEFAULT_CATEGORIES.map(c => [c, 0])),
     feePlans: [],
     members: [],
+    dropIns: [],
     expenses: [],
     activity: [],
     lastModified: null,
@@ -689,6 +697,8 @@ function normalizeState(raw) {
   s.settings.defaultDueDate = isValidDateStr(s.settings.defaultDueDate) ? s.settings.defaultDueDate : '';
   s.settings.budgetWarnPct = clamp(Math.round(Number(s.settings.budgetWarnPct)) || 80, 1, 100);
   if (!['auto', 'light', 'dark'].includes(s.settings.theme)) s.settings.theme = 'auto';
+  s.settings.dropInFee = Math.max(0, round2(s.settings.dropInFee));
+  s.settings.freeFirstDropIn = s.settings.freeFirstDropIn !== false;
   if (raw.float) s.float = { amount: round2(raw.float.amount), note: String(raw.float.note || ''), updatedAt: raw.float.updatedAt || null };
 
   const catList = Array.isArray(raw.categories) ? raw.categories.map(c => String(c ?? '').trim()).filter(Boolean) : [];
@@ -710,6 +720,7 @@ function normalizeState(raw) {
     name: String(m.name).trim(),
     email: String(m.email || ''),
     phone: String(m.phone || ''),
+    aliases: (Array.isArray(m.aliases) ? m.aliases : []).map(a => String(a ?? '').trim()).filter(Boolean),
     feeTarget: Math.max(0, round2(m.feeTarget)),
     planId: planIds.has(m.planId) ? m.planId : '',
     dueDate: isValidDateStr(m.dueDate) ? m.dueDate : '',
@@ -719,7 +730,7 @@ function normalizeState(raw) {
     payments: (Array.isArray(m.payments) ? m.payments : []).map(p => ({
       id: String(p.id || uid()),
       amount: round2(p.amount),
-      method: METHODS.includes(p.method) ? p.method : 'Other',
+      method: normalizeMethod(p.method), // also maps older "e-Transfer/Venmo" and "Check" values
       date: isValidDateStr(p.date) ? p.date : todayStr(),
       note: String(p.note || ''),
       createdAt: p.createdAt || now,
@@ -739,7 +750,7 @@ function normalizeState(raw) {
       quantity,
       unitPrice,
       total: round2(quantity * unitPrice),
-      paymentMethod: METHODS.includes(e.paymentMethod) ? e.paymentMethod : 'Other',
+      paymentMethod: normalizeMethod(e.paymentMethod),
       paidBy: String(e.paidBy || ''),
       reimbursement: ['none', 'pending', 'reimbursed'].includes(e.reimbursement) ? e.reimbursement : 'none',
       reimbursedAt: e.reimbursedAt || null,
@@ -752,6 +763,19 @@ function normalizeState(raw) {
       updatedAt: e.updatedAt || e.createdAt || now,
     };
   });
+  s.dropIns = (Array.isArray(raw.dropIns) ? raw.dropIns : []).filter(d => d && String(d.name || '').trim()).map(d => ({
+    id: String(d.id || uid()),
+    name: String(d.name).trim(),
+    date: isValidDateStr(d.date) ? d.date : todayStr(),
+    dateUnknown: !!d.dateUnknown, // imported from a list that had no dates
+    session: String(d.session || ''),
+    fee: Math.max(0, round2(d.fee)),
+    paid: Math.max(0, round2(d.paid)),
+    method: normalizeMethod(d.method),
+    notes: String(d.notes || ''),
+    createdAt: d.createdAt || now,
+    updatedAt: d.updatedAt || d.createdAt || now,
+  }));
   const rawBudgets = raw.budgets || {};
   s.budgets = Object.fromEntries(s.categories.map(c => [c, Math.max(0, round2(rawBudgets[c]))]));
   s.activity = (Array.isArray(raw.activity) ? raw.activity : []).filter(a => a && a.at && a.text).slice(0, 300);
@@ -820,7 +844,8 @@ const ui = {
   tab: 'dashboard',
   memberSearch: '', memberFilter: 'all', memberSort: 'name', expanded: new Set(),
   expenseSearch: '', expenseCategory: 'all', expenseReimb: 'all', expensePhotos: 'all', expenseSort: 'newest',
-  lastMethod: 'e-Transfer/Venmo', lastExpenseMethod: 'Credit', lastCategory: '',
+  dropView: 'people', dropSearch: '', dropFilter: 'all',
+  lastMethod: 'e-Transfer', lastExpenseMethod: 'Credit', lastCategory: '',
   imp: freshImport(),
 };
 
@@ -956,6 +981,46 @@ const planTotal = p => sumBy(p.installments, i => i.amount);
 const memberPlan = m => (m.planId ? state.feePlans.find(p => p.id === m.planId) || null : null);
 const planSummary = p => p.installments.map(i => `${money(i.amount)}${i.dueDate ? ' by ' + fmtDate(i.dueDate) : ''}`).join(' · ');
 
+/* Name matching: "SMITH-JONES, ANNA", "Anna Smith-Jones" and "ANNASMITHJONES" all count as the same person. */
+const foldName = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+const tokenKey = s => foldName(s).split(' ').filter(Boolean).sort().join(' ');
+const compactKey = s => foldName(s).replace(/\s/g, '');
+const samePerson = (a, b) => !!tokenKey(a) && (tokenKey(a) === tokenKey(b) || compactKey(a) === compactKey(b));
+const memberNames = m => [m.name, ...m.aliases];
+/** The one member whose name or other names match, or null if none (or more than one) do. */
+function matchMember(name) {
+  if (!tokenKey(name)) return null;
+  const hits = state.members.filter(m => memberNames(m).some(n => samePerson(n, name)));
+  return hits.length === 1 ? hits[0] : null;
+}
+function parseAliases(text, mainName) {
+  const out = [];
+  for (const raw of String(text ?? '').split(/[;\n]/)) { // not commas: bank names often read "LAU, KA YAN"
+    const a = raw.trim().replace(/\s+/g, ' ');
+    if (a && !samePerson(a, mainName) && !out.some(x => samePerson(x, a))) out.push(a);
+  }
+  return out;
+}
+/** Bank lists often SHOUT names; store them as "Yveth Valdez Gameng". */
+const tidyName = s => { const t = String(s ?? '').trim().replace(/\s+/g, ' '); return t && t === t.toUpperCase() && /[A-Z]/.test(t) ? t.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, (m, p, c) => p + c.toUpperCase()) : t; };
+
+/* Drop-ins: one record per person per visit */
+const dropOwed = d => Math.max(0, round2(d.fee - d.paid));
+const dropStatus = d => (d.fee <= 0 ? (d.paid > 0 ? 'paid' : 'free') : d.paid >= d.fee - 0.004 ? 'paid' : d.paid > 0 ? 'partial' : 'unpaid');
+function dropInPeople() {
+  const groups = [];
+  for (const d of state.dropIns) {
+    let g = groups.find(x => samePerson(x.visits[0].name, d.name));
+    if (!g) groups.push(g = { visits: [] });
+    g.visits.push(d);
+  }
+  return groups.map(g => {
+    g.visits.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    const last = g.visits[g.visits.length - 1];
+    return { name: last.name, visits: g.visits, last: last.date, charged: sumBy(g.visits, v => v.fee), paid: sumBy(g.visits, v => v.paid), owed: sumBy(g.visits, dropOwed), member: matchMember(last.name) };
+  });
+}
+
 /** A member's installments, scaled to their own fee (the last installment absorbs any discount or extra). */
 function scheduleFor(m) {
   const plan = memberPlan(m);
@@ -1014,8 +1079,10 @@ function totals() {
   const expenses = sumBy(ex, e => e.total);
   const pending = sumBy(ex.filter(e => e.reimbursement === 'pending'), e => e.total);
   const float = state.float.amount;
-  const net = round2(float + collected - expenses);
-  return { collected, expected, outstanding, overdue, expenses, pending, float, net, cash: round2(net + pending) };
+  const dropIns = sumBy(state.dropIns, d => d.paid);
+  const dropOwing = sumBy(state.dropIns, dropOwed);
+  const net = round2(float + collected + dropIns - expenses);
+  return { collected, expected, outstanding, overdue, expenses, pending, float, dropIns, dropOwing, net, cash: round2(net + pending) };
 }
 function categorySpend() {
   const o = Object.fromEntries(cats().map(c => [c, 0]));
@@ -1092,7 +1159,7 @@ function renderTabs() {
     `<button class="tab" role="tab" data-tab="${id}" aria-selected="${ui.tab === id}">${label}</button>`).join('');
 }
 
-const VIEWS = { dashboard: viewDashboard, members: viewMembers, expenses: viewExpenses, budget: viewBudget, data: viewData, settings: viewSettings };
+const VIEWS = { dashboard: viewDashboard, members: viewMembers, dropins: viewDropIns, expenses: viewExpenses, budget: viewBudget, data: viewData, settings: viewSettings };
 
 function render() {
   const ae = document.activeElement;
@@ -1115,6 +1182,7 @@ function render() {
   }
 }
 function refreshMembersTable() { $('#membersTable').innerHTML = membersTable(); }
+function refreshDropTable() { $('#dropTable').innerHTML = dropInsTable(); }
 function refreshExpensesTable() { const el = $('#expensesTable'); el.innerHTML = expensesTable(); hydrateThumbs(el); }
 
 /* ---------- Dashboard ---------- */
@@ -1166,7 +1234,7 @@ function viewDashboard() {
     <div>
       <div class="label">Net balance</div>
       <div class="hero-value ${t.net < 0 ? 'neg' : ''}">${money(t.net)}</div>
-      <div class="formula">${money(t.float)} starting float + ${money(t.collected)} fees collected − ${money(t.expenses)} expenses</div>
+      <div class="formula">${money(t.float)} starting float + ${money(t.collected)} fees collected${t.dropIns ? ` + ${money(t.dropIns)} drop-ins` : ''} − ${money(t.expenses)} expenses</div>
       ${t.pending > 0 ? `<div class="formula" style="margin-top:4px">Cash on hand right now: <strong>${money(t.cash)}</strong>, since ${money(t.pending)} is still owed back to people who paid out of pocket.</div>` : ''}
     </div>
     <div class="hero-side">
@@ -1181,6 +1249,7 @@ function viewDashboard() {
     ${kpi('Starting float', money(t.float), state.float.updatedAt ? `Updated ${esc(fmtTS(state.float.updatedAt))}` : 'Not set yet', floatAction)}
     ${kpi('Fees collected', money(t.collected), `${plural(payments, 'payment')} from ${plural(payers, 'member')}`)}
     ${kpi('Fees outstanding', money(t.outstanding), outstandingSub)}
+    ${kpi('Drop-in income', money(t.dropIns), state.dropIns.length ? `${plural(state.dropIns.length, 'visit')}${t.dropOwing ? ` · ${money(t.dropOwing)} still owed` : ''}` : 'No drop-ins yet', `<button class="icon-btn" data-tab="dropins" title="Go to drop-ins" aria-label="Go to drop-ins">${icon('chevron')}</button>`)}
     ${kpi('Total expenses', money(t.expenses), `${plural(state.expenses.length, 'expense')}${totalBudget > 0 ? ` · ${fmtPct((t.expenses / totalBudget) * 100)} of budget` : ''}`)}
     ${kpi('Pending reimbursements', money(t.pending), pendingCount ? `${plural(pendingCount, 'expense')} to pay back` : 'Nothing owed back')}
   </section>
@@ -1255,7 +1324,7 @@ function filteredMembers() {
   const q = ui.memberSearch.trim().toLowerCase();
   const list = state.members.filter(m =>
     (ui.memberFilter === 'all' || memberStatus(m) === ui.memberFilter) &&
-    (!q || [m.name, m.email, m.phone, m.notes, memberPlan(m)?.name].join(' ').toLowerCase().includes(q)));
+    (!q || [m.name, ...m.aliases, m.email, m.phone, m.notes, memberPlan(m)?.name].join(' ').toLowerCase().includes(q)));
   const sorters = {
     name: byName,
     balance: (a, b) => memberBalance(b) - memberBalance(a) || byName(a, b),
@@ -1296,7 +1365,7 @@ function membersTable() {
     const balCell = bal > 0 ? money(bal) : bal < 0 ? `<span class="good-text">Credit ${money(-bal)}</span>` : '<span class="muted">—</span>';
     return `<tr class="member-row ${open ? 'open' : ''}" data-id="${m.id}">
       <td style="width:44px"><button class="icon-btn expander" data-action="toggle-member" data-id="${m.id}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} payment history for ${esc(m.name)}">${icon('chevron')}</button></td>
-      <td><div class="strong">${esc(m.name)}</div>${contact ? `<div class="muted small">${contact}</div>` : ''}</td>
+      <td><div class="strong">${esc(m.name)}</div>${m.aliases.length ? `<div class="muted small">aka ${m.aliases.map(esc).join(' · ')}</div>` : ''}${contact ? `<div class="muted small">${contact}</div>` : ''}</td>
       <td class="num">${money(m.feeTarget)}${plan ? `<div class="muted small">${esc(plan.name)}</div>` : ''}</td>
       <td class="num">${money(paid)}</td>
       <td class="num">${balCell}</td>
@@ -1420,6 +1489,97 @@ function expensesTable() {
   </table></div>`;
 }
 
+/* ---------- Drop-ins ---------- */
+function viewDropIns() {
+  const t = totals();
+  const people = dropInPeople();
+  const owing = people.filter(p => p.owed > 0).length;
+  const s = state.settings;
+  const viewChip = (v, label) => `<button class="chip" data-action="drop-view" data-view="${v}" aria-pressed="${ui.dropView === v}">${label}</button>`;
+  return `
+  <div class="page-head"><h2>Drop-ins</h2><p class="muted">People who come to a practice or event without being full members. What they pay counts toward your net balance.</p></div>
+  <section class="kpis three">
+    ${kpi('Drop-in income', money(t.dropIns), `${plural(state.dropIns.length, 'visit')} from ${plural(people.length, 'person', 'people')}`)}
+    ${kpi('Still owed', money(t.dropOwing), owing ? `${plural(owing, 'person', 'people')} still owe` : 'Nobody owes anything')}
+    ${kpi('Rate per practice', money(s.dropInFee), `${s.freeFirstDropIn ? 'First visit free · ' : ''}<button class="link small" data-tab="settings">change</button>`)}
+  </section>
+  <div class="toolbar">
+    <div class="search">${icon('search')}<input type="search" id="dropSearch" placeholder="Search names or practices…" value="${esc(ui.dropSearch)}" aria-label="Search drop-ins"></div>
+    <div class="chips" role="group" aria-label="View">${viewChip('people', 'By person')}${viewChip('visits', 'All visits')}</div>
+    <select id="dropFilter" aria-label="Filter by payment">
+      <option value="all" ${ui.dropFilter === 'all' ? 'selected' : ''}>Paid and unpaid</option>
+      <option value="owing" ${ui.dropFilter === 'owing' ? 'selected' : ''}>Still owe money</option>
+    </select>
+    <div class="spacer"></div>
+    <button class="btn primary" data-action="add-dropin">${icon('plus')}Record drop-in</button>
+  </div>
+  <div id="dropTable">${dropInsTable()}</div>`;
+}
+
+function dropBadge(d) {
+  const st = DROP_STATUS[dropStatus(d)];
+  return `<span class="badge ${st.cls}">${icon(st.icon)}${st.label}</span>`;
+}
+
+function dropInsTable() {
+  if (!state.dropIns.length) {
+    return `<div class="card">${emptyState('users', 'No drop-ins yet', 'Record people who come to a practice or event without being full members. You can enter a whole group at once, like everyone at a Discovery Day.',
+      `<button class="btn primary" data-action="add-dropin">${icon('plus')}Record drop-in</button><button class="btn" data-tab="data">${icon('upload')}Import a list</button>`)}</div>`;
+  }
+  const q = ui.dropSearch.trim().toLowerCase();
+  const noMatch = `<div class="card">${emptyState('search', 'Nothing matches', 'Try a different search or filter.', '<button class="btn" data-action="clear-drop-filters">Clear filters</button>')}</div>`;
+  if (ui.dropView === 'people') {
+    const people = dropInPeople()
+      .filter(p => (!q || [p.name, ...p.visits.map(v => v.session)].join(' ').toLowerCase().includes(q)) && (ui.dropFilter === 'all' || p.owed > 0))
+      .sort((a, b) => b.last.localeCompare(a.last) || a.name.localeCompare(b.name));
+    if (!people.length) return noMatch;
+    const rows = people.map(p => {
+      const visits = [...p.visits].reverse();
+      const list = visits.slice(0, 4).map(v => [v.dateUnknown ? '' : esc(fmtDate(v.date)), esc(v.session)].filter(Boolean).join(' · ') || 'Date not recorded').join('<br>') + (visits.length > 4 ? `<br>+${visits.length - 4} more` : '');
+      return `<tr>
+        <td><div class="strong">${esc(p.name)}</div>${p.member ? `<span class="tag good">${icon('check')}Member</span>` : ''}</td>
+        <td><div class="strong">${plural(p.visits.length, 'visit')}</div><div class="muted small">${list}</div></td>
+        <td class="num">${money(p.charged)}</td>
+        <td class="num">${money(p.paid)}</td>
+        <td class="num">${p.owed > 0 ? `<span class="crit-text">${money(p.owed)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="actions">
+          <button class="btn sm" data-action="person-visit" data-name="${esc(p.name)}">${icon('plus')}Visit</button>
+          ${p.owed > 0 ? `<button class="btn sm" data-action="person-paid" data-name="${esc(p.name)}">${icon('check')}Mark paid</button>` : ''}
+          ${p.member ? '' : `<button class="btn sm" data-action="make-member" data-name="${esc(p.name)}" title="Add ${esc(p.name)} as a full member">${icon('user')}Make member</button>`}
+        </td>
+      </tr>`;
+    }).join('');
+    return `<div class="table-wrap"><table class="data">
+      <thead><tr><th>Person</th><th>Visits</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Owed</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td>${plural(people.length, 'person', 'people')}</td><td>${plural(sumBy(people, p => p.visits.length), 'visit')}</td><td class="num">${money(sumBy(people, p => p.charged))}</td><td class="num">${money(sumBy(people, p => p.paid))}</td><td class="num">${money(sumBy(people, p => p.owed))}</td><td></td></tr></tfoot>
+    </table></div>`;
+  }
+  const visits = state.dropIns
+    .filter(d => (!q || [d.name, d.session, d.notes].join(' ').toLowerCase().includes(q)) && (ui.dropFilter === 'all' || dropOwed(d) > 0))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  if (!visits.length) return noMatch;
+  const rows = visits.map(d => {
+    const edited = d.updatedAt !== d.createdAt;
+    return `<tr>
+      <td class="nowrap">${d.dateUnknown ? '<span class="muted">Not recorded</span>' : esc(fmtDate(d.date))}</td>
+      <td><div class="strong">${esc(d.name)}</div>${d.notes ? `<div class="muted small">${esc(d.notes)}</div>` : ''}</td>
+      <td>${esc(d.session) || '<span class="muted">—</span>'}</td>
+      <td class="num">${money(d.fee)}</td>
+      <td class="num">${money(d.paid)}</td>
+      <td>${dropBadge(d)}${dropOwed(d) > 0 ? `<div style="margin-top:4px"><button class="link small" data-action="dropin-paid" data-id="${d.id}">Mark paid</button></div>` : ''}</td>
+      <td>${d.paid > 0 ? esc(d.method) : '<span class="muted">—</span>'}</td>
+      <td class="muted small nowrap">${edited ? 'Edited' : 'Added'}<br>${esc(fmtTS(d.updatedAt))}</td>
+      <td class="actions"><button class="icon-btn" data-action="edit-dropin" data-id="${d.id}" title="Edit visit" aria-label="Edit visit">${icon('pencil')}</button><button class="icon-btn danger" data-action="delete-dropin" data-id="${d.id}" title="Delete visit" aria-label="Delete visit">${icon('trash')}</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table class="data" style="min-width:900px">
+    <thead><tr><th>Date</th><th>Name</th><th>Practice / event</th><th class="num">Charged</th><th class="num">Paid</th><th>Status</th><th>Paid with</th><th>Last change</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="3">${visits.length === state.dropIns.length ? plural(visits.length, 'visit') : `${visits.length} of ${state.dropIns.length} visits`}</td><td class="num">${money(sumBy(visits, d => d.fee))}</td><td class="num">${money(sumBy(visits, d => d.paid))}</td><td colspan="4">${sumBy(visits, dropOwed) > 0 ? `${money(sumBy(visits, dropOwed))} still owed` : ''}</td></tr></tfoot>
+  </table></div>`;
+}
+
 /* ---------- Budget & categories ---------- */
 function viewBudget() {
   const spend = categorySpend();
@@ -1534,6 +1694,10 @@ function viewSettings() {
       <div class="field-row">
         <label class="field"><span>Default fee per member</span><input type="number" name="defaultFee" min="0" step="0.01" value="${s.defaultFee || ''}" placeholder="0.00"><small class="hint">Pre-filled for new members who aren’t on a fee plan.</small></label>
         <label class="field"><span>Team fee due date</span><input type="date" name="defaultDueDate" value="${esc(s.defaultDueDate)}"><small class="hint">For members not on a fee plan: unpaid balances turn Overdue after this date.</small></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Drop-in rate per practice</span><input type="number" name="dropInFee" min="0" step="0.01" value="${s.dropInFee || ''}" placeholder="0.00"><small class="hint">Pre-filled when you record a drop-in.</small></label>
+        <div class="field"><span>First drop-in</span><label class="check" style="min-height:34px"><input type="checkbox" name="freeFirstDropIn" ${s.freeFirstDropIn ? 'checked' : ''}> Free for someone’s first visit</label></div>
       </div>
       <div class="field-row">
         <label class="field"><span>Budget warning at (% used)</span><input type="number" name="budgetWarnPct" min="1" max="100" step="1" value="${s.budgetWarnPct}"></label>
@@ -1796,7 +1960,7 @@ function deletePlan(id) {
 }
 
 /* ---------- Members ---------- */
-function openMemberModal(id) {
+function openMemberModal(id, prefill = {}) {
   const m = id ? findMember(id) : null;
   const s = state.settings;
   const plans = state.feePlans;
@@ -1807,7 +1971,8 @@ function openMemberModal(id) {
   openModal({
     title: m ? `Edit ${esc(m.name)}` : 'Add a team member',
     body: `
-      <label class="field"><span>Full name</span><input type="text" name="name" value="${esc(m?.name || '')}" required autofocus maxlength="120"></label>
+      <label class="field"><span>Name they go by</span><input type="text" name="name" value="${esc(m?.name || prefill.name || '')}" required autofocus maxlength="120"></label>
+      <label class="field"><span>Other names (optional, one per line)</span><textarea name="aliases" rows="2" maxlength="400" placeholder="e.g. their legal name as it shows on e-Transfers">${esc((m?.aliases || prefill.aliases || []).join('\n'))}</textarea><small class="hint">Names that show up on bank e-Transfers or that they also go by. Payments under any of these names are matched to this person, whatever the order or capitals.</small></label>
       <div class="field-row">
         <label class="field"><span>Email</span><input type="email" name="email" value="${esc(m?.email || '')}" placeholder="optional"></label>
         <label class="field"><span>Phone</span><input type="tel" name="phone" value="${esc(m?.phone || '')}" placeholder="optional"></label>
@@ -1819,7 +1984,7 @@ function openMemberModal(id) {
         <label class="field"><span>Fee for the season</span><input type="number" name="feeTarget" min="0" step="0.01" inputmode="decimal" value="${startFee}" placeholder="0.00"><small class="hint">What this person owes. Adjust it for discounts, youth rates or part seasons.</small></label>
         <label class="field"><span>Due date</span><input type="date" name="dueDate" id="memberDue" value="${esc(m?.dueDate || '')}"><small class="hint" id="dueHint">${plainDueHint}</small></label>
       </div>
-      <label class="field"><span>Notes</span><textarea name="notes" rows="2" placeholder="e.g. Youth rate, recruitment bonus, paying in installments…">${esc(m?.notes || '')}</textarea></label>
+      <label class="field"><span>Notes</span><textarea name="notes" rows="2" placeholder="e.g. Youth rate, recruitment bonus, paying in installments…">${esc(m?.notes || prefill.notes || '')}</textarea></label>
       ${m ? `<p class="hint">Added ${esc(fmtTS(m.createdAt))} · last updated ${esc(fmtTS(m.updatedAt))}</p>` : ''}`,
     submitLabel: m ? 'Save changes' : 'Add member',
     onOpen: form => {
@@ -1848,8 +2013,14 @@ function openMemberModal(id) {
       }
       const planId = plans.some(p => p.id === fd.planId) ? fd.planId : '';
       const now = nowISO();
+      const aliases = parseAliases(fd.aliases, name);
+      const shared = aliases.map(a => ({ a, other: state.members.find(x => x.id !== m?.id && memberNames(x).some(n => samePerson(n, a))) })).find(x => x.other);
+      if (shared && form.dataset.aliasOk !== shared.a) {
+        form.dataset.aliasOk = shared.a;
+        return formError(form, `“${shared.a}” is already a name for ${shared.other.name}, so payments under it couldn’t be matched automatically. Click the button again to save anyway.`);
+      }
       const fields = {
-        name, email: fd.email.trim(), phone: fd.phone.trim(), feeTarget: fee, planId,
+        name, aliases, email: fd.email.trim(), phone: fd.phone.trim(), feeTarget: fee, planId,
         dueDate: isValidDateStr(fd.dueDate) ? fd.dueDate : (planId ? m?.dueDate || '' : ''),
         notes: fd.notes.trim(),
       };
@@ -2222,6 +2393,127 @@ function openActivityModal() {
   openModal({ title: 'All activity', body: activityFeed(300), submitLabel: '', cancelLabel: 'Close', wide: true });
 }
 
+/* ---------- Drop-ins ---------- */
+const isFirstVisit = name => !state.dropIns.some(d => samePerson(d.name, name));
+function openDropInModal(dropId, presetName = '') {
+  const d = dropId ? state.dropIns.find(x => x.id === dropId) : null;
+  const s = state.settings;
+  const sessions = [...new Set(state.dropIns.map(x => x.session).filter(Boolean))].slice(-40);
+  const names = [...new Set(state.dropIns.map(x => x.name))];
+  const method = d && d.paid > 0 ? d.method : ui.lastMethod;
+  openModal({
+    title: d ? 'Edit drop-in visit' : 'Record drop-ins',
+    body: `
+      ${d
+        ? `<label class="field"><span>Name</span><input type="text" name="name" value="${esc(d.name)}" required autofocus list="dropNames" maxlength="120"></label>`
+        : `<label class="field"><span>Who came?</span><textarea name="names" id="dropNamesInput" rows="3" required autofocus placeholder="One name per line. Paste a whole list for events like Discovery Day.">${esc(presetName)}</textarea><small class="hint" id="dropNamesHint"></small></label>`}
+      <datalist id="dropNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <div class="field-row">
+        <label class="field"><span>Date</span><input type="date" name="date" required value="${d?.date || todayStr()}"></label>
+        <label class="field"><span>Practice / event</span><input type="text" name="session" list="dropSessions" value="${esc(d?.session || '')}" placeholder="e.g. TAG practice, Discovery Day" maxlength="120"><datalist id="dropSessions">${sessions.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
+        <label class="field"><span>${d ? 'Charge' : 'Charge per person'}</span><input type="number" name="fee" min="0" step="0.01" inputmode="decimal" value="${d ? d.fee : (s.dropInFee || '')}" placeholder="0.00"></label>
+      </div>
+      ${d
+        ? `<label class="field"><span>Amount paid</span><input type="number" name="paid" min="0" step="0.01" inputmode="decimal" value="${d.paid}"></label>`
+        : '<label class="check"><input type="checkbox" name="paidNow" id="dropPaidNow" checked> They paid on the day</label>'}
+      <fieldset class="field" id="dropMethod"><legend>Payment method</legend><div class="pills">${METHODS.map(x =>
+        `<label class="pill"><input type="radio" name="method" value="${esc(x)}" ${x === method ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div></fieldset>
+      <label class="field"><span>Notes (optional)</span><input type="text" name="notes" value="${esc(d?.notes || '')}" maxlength="200"></label>
+      ${d ? `<p class="hint">Added ${esc(fmtTS(d.createdAt))}${d.updatedAt !== d.createdAt ? ` · last edited ${esc(fmtTS(d.updatedAt))}` : ''}</p>` : ''}`,
+    submitLabel: d ? 'Save changes' : 'Record',
+    onOpen: form => {
+      if (d) return;
+      const input = form.querySelector('#dropNamesInput'), hint = form.querySelector('#dropNamesHint');
+      const paidNow = form.querySelector('#dropPaidNow'), methodBox = form.querySelector('#dropMethod');
+      const update = () => {
+        const list = splitNames(input.value);
+        const parts = [];
+        if (list.length > 1) parts.push(`${list.length} people`);
+        const free = s.freeFirstDropIn ? list.filter(isFirstVisit) : [];
+        if (free.length) parts.push(`first visit free for ${free.length === list.length && list.length > 1 ? 'all of them' : free.join(', ')}`);
+        const members = list.map(matchMember).filter(Boolean);
+        if (members.length) parts.push(`${members.map(m => m.name).join(', ')} ${members.length === 1 ? 'is' : 'are'} already a member`);
+        hint.textContent = parts.length ? parts.join(' · ') + '.' : '';
+        methodBox.hidden = !paidNow.checked;
+      };
+      input.addEventListener('input', update);
+      paidNow.addEventListener('change', update);
+      update();
+    },
+    onSubmit: (fd, form) => {
+      if (!isValidDateStr(fd.date)) return formError(form, 'Choose the date they came.');
+      const fee = fd.fee.trim() ? parseMoney(fd.fee) : 0;
+      if (fee == null || fee < 0) return formError(form, 'The charge must be a number of zero or more.');
+      const methodVal = METHODS.includes(fd.method) ? fd.method : 'Other';
+      const now = nowISO();
+      if (d) {
+        const name = fd.name.trim().replace(/\s+/g, ' ');
+        if (!name) return formError(form, 'Enter their name.');
+        const paid = fd.paid.trim() ? parseMoney(fd.paid) : 0;
+        if (paid == null || paid < 0) return formError(form, 'The amount paid must be a number of zero or more.');
+        Object.assign(d, { name, date: fd.date, dateUnknown: d.dateUnknown && fd.date === d.date, session: fd.session.trim(), fee, paid, method: methodVal, notes: fd.notes.trim(), updatedAt: now });
+        if (paid > 0) ui.lastMethod = methodVal;
+        commit(`Edited drop-in visit for ${name}`, { type: 'edit' });
+        toast('Visit updated');
+        return;
+      }
+      const list = splitNames(fd.names);
+      if (!list.length) return formError(form, 'Enter at least one name.');
+      const paidNow = fd.paidNow === 'on';
+      let collected = 0;
+      for (const name of list) {
+        const free = state.settings.freeFirstDropIn && isFirstVisit(name);
+        const charge = free ? 0 : fee;
+        const paid = paidNow ? charge : 0;
+        collected += paid;
+        state.dropIns.push({ id: uid(), name, date: fd.date, session: fd.session.trim(), fee: charge, paid, method: methodVal, notes: [free ? 'Free first visit' : '', fd.notes.trim()].filter(Boolean).join(' · '), createdAt: now, updatedAt: now });
+      }
+      if (paidNow) ui.lastMethod = methodVal;
+      const who = list.length === 1 ? list[0] : plural(list.length, 'person', 'people');
+      commit(`Drop-in · ${who}${fd.session.trim() ? ` at ${fd.session.trim()}` : ''}`, { type: 'dropin', amount: collected || null, dir: collected ? 'in' : null });
+      toast(`Recorded ${list.length === 1 ? list[0] : plural(list.length, 'drop-in')}`);
+    },
+  });
+}
+/** One name per line; pasted spreadsheet rows keep just their first cell. Duplicates are dropped. */
+function splitNames(text) {
+  const out = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const name = tidyName(line.split('\t')[0]);
+    if (name && !out.some(x => samePerson(x, name))) out.push(name);
+  }
+  return out;
+}
+function deleteDropIn(id) {
+  const d = state.dropIns.find(x => x.id === id);
+  if (!d) return;
+  confirmDialog({
+    title: 'Delete this visit?',
+    message: `${d.name}’s visit on ${fmtDate(d.date)}${d.session ? ` (${d.session})` : ''}${d.paid > 0 ? `, and the ${money(d.paid)} they paid,` : ''} will be removed.`,
+    confirmLabel: 'Delete visit',
+    danger: true,
+    onConfirm: () => {
+      const snap = JSON.stringify(state);
+      state.dropIns = state.dropIns.filter(x => x.id !== id);
+      commit(`Deleted drop-in visit for ${d.name} (${fmtDate(d.date)})`, { type: 'delete' });
+      undoable('Visit deleted', snap, `delete drop-in for ${d.name}`);
+    },
+  });
+}
+function markDropInsPaid(visits, who) {
+  const owed = sumBy(visits, dropOwed);
+  if (!owed) return;
+  const snap = JSON.stringify(state);
+  const now = nowISO();
+  for (const d of visits) if (dropOwed(d) > 0) { d.paid = d.fee; d.method = ui.lastMethod; d.updatedAt = now; }
+  commit(`Drop-in payment from ${who} · ${ui.lastMethod}`, { type: 'dropin', amount: owed, dir: 'in' });
+  undoable(`Marked ${money(owed)} paid by ${who} (${ui.lastMethod})`, snap, `mark ${who} paid`);
+}
+function makeMemberFromDropIn(name) {
+  const visits = state.dropIns.filter(d => samePerson(d.name, name));
+  openMemberModal(null, { name, notes: `Was a drop-in first (${plural(visits.length, 'visit')}, ${money(sumBy(visits, d => d.paid))} paid)` });
+}
+
 /* =====================================================================
    Spreadsheet import: CSV/pasted cells, or .xlsx read directly
    ===================================================================== */
@@ -2356,6 +2648,7 @@ const IMPORT_FIELDS = {
     { key: 'lastName', label: 'Last name', syn: ['last name', 'last', 'surname', 'family name', 'lname'] },
     { key: 'email', label: 'Email', syn: ['email', 'email address', 'e-mail', 'mail'] },
     { key: 'phone', label: 'Phone', syn: ['phone', 'phone number', 'mobile', 'cell', 'cell phone', 'telephone', 'tel', 'contact number'] },
+    { key: 'aliases', label: 'Other names', syn: ['other names', 'other name', 'also known as', 'aka', 'nickname', 'nicknames', 'preferred name', 'legal name', 'government name', 'alias', 'aliases', 'e-transfer name', 'etransfer name', 'bank name'] },
     { key: 'feePlan', label: 'Fee plan', syn: ['fee plan', 'plan', 'membership type', 'fee type', 'fee tier', 'tier', 'registration type', 'member type'] },
     { key: 'feeTarget', label: 'Fee', syn: ['fee target', 'fee', 'fees', 'team fee', 'amount due', 'fee amount', 'expected fee', 'expected', 'total fee', 'total due', 'dues', 'membership fee', 'season fee', 'amount owed', 'target', 'fee owed'] },
     { key: 'paid', label: 'Payment 1 / amount paid', syn: ['amount paid', 'paid', 'total paid', 'fees paid', 'paid amount', 'amount received', 'received', 'collected', 'paid to date', 'payment', 'payments', 'fee paid', 'amount', 'payment amount', 'payment 1', 'installment 1', 'instalment 1', '1st payment', 'first payment', '1st installment', 'deposit'], exact: ['payment', 'payments', 'amount'] },
@@ -2382,19 +2675,40 @@ const IMPORT_FIELDS = {
     { key: 'receipt', label: 'Receipt # / reference', syn: ['receipt', 'receipt ref', 'receipt number', 'receipt no', 'proof', 'invoice', 'invoice number', 'reference', 'ref', 'attachment', 'file', 'receipt file', 'receipt reference'] },
     { key: 'notes', label: 'Notes', syn: ['notes', 'note', 'comments', 'comment', 'memo', 'remarks'] },
   ],
+  dropins: [
+    { key: 'name', label: 'Name', syn: ['name', 'person', 'paddler', 'guest', 'visitor', 'drop in', 'drop ins', 'participant', 'full name'] },
+    { key: 'date', label: 'Date', syn: ['date', 'visit date', 'practice date', 'session date', 'event date'] },
+    { key: 'session', label: 'Practice / event', syn: ['session', 'sessions', 'practice', 'practices', 'practices attended', 'practice attended', 'event', 'location', 'class', 'sessions attended', 'attended'] },
+    { key: 'fee', label: 'Charge / owed', syn: ['total owed', 'owed', 'fee', 'charge', 'cost', 'amount owed', 'price', 'amount due', 'drop in fee'] },
+    { key: 'paid', label: 'Paid', syn: ['paid', 'amount paid', 'received', 'collected', 'payment'], exact: ['payment'] },
+    { key: 'method', label: 'Payment method', syn: ['payment method', 'method', 'paid via', 'paid with'] },
+    { key: 'notes', label: 'Notes', syn: ['notes', 'note', 'comments', 'comment', 'remarks'] },
+  ],
+  payments: [
+    { key: 'date', label: 'Date', syn: ['date', 'payment date', 'date received', 'transaction date', 'deposit date', 'posted', 'posting date', 'date paid'] },
+    { key: 'name', label: 'Name on the payment', syn: ['name', 'from', 'sender', 'sender name', 'payer', 'paid by', 'received from', 'customer', 'contact', 'member', 'who'] },
+    { key: 'amount', label: 'Amount', syn: ['amount', 'amount paid', 'deposit', 'deposits', 'credit', 'credits', 'paid', 'payment amount', 'amount received', 'value'] },
+    { key: 'method', label: 'Payment method', syn: ['payment method', 'method', 'paid via', 'transaction type'] },
+    { key: 'notes', label: 'Message / notes', syn: ['memo', 'message', 'notes', 'note', 'description', 'details', 'reference'] },
+  ],
 };
 for (const t of Object.keys(IMPORT_FIELDS)) for (const f of IMPORT_FIELDS[t]) { f.synN = f.syn.map(normKey); f.exactN = (f.exact || []).map(normKey); }
 const ALL_SYNONYMS = new Set(Object.values(IMPORT_FIELDS).flat().flatMap(f => f.synN));
 const DISTINCT = {
-  members: ['name', 'firstName', 'lastName', 'email', 'phone', 'feePlan', 'feeTarget', 'paid', 'paid2', 'paid3', 'balance', 'dueDate'],
+  members: ['name', 'firstName', 'lastName', 'email', 'phone', 'aliases', 'feePlan', 'feeTarget', 'paid', 'paid2', 'paid3', 'balance', 'dueDate'],
   expenses: ['description', 'vendor', 'category', 'quantity', 'unitPrice', 'total', 'paidBy', 'reimbursement', 'receipt'],
+  dropins: ['name', 'session', 'fee'],
+  payments: ['name', 'amount'],
 };
+const IMPORT_TYPES = { members: 'Members & fees', dropins: 'Drop-ins', payments: 'Payments (e.g. e-Transfers from the bank)', expenses: 'Expenses' };
+const IMPORT_NOUN = { members: 'member', dropins: 'drop-in', payments: 'payment', expenses: 'expense' };
 
 function freshImport() {
   return {
-    stage: 'input', type: 'auto', resolvedType: 'members', source: '', headers: [], rows: [], headerRow: 0, mapping: {},
+    stage: 'input', type: 'auto', resolvedType: 'members', source: '', grid: [], headers: [], rows: [], headerRow: 0, firstDataRow: 1, noHeader: false, mapping: {},
     dayFirst: false, mode: 'append', dupMode: 'skip', error: '', pasteDraft: '', workbook: null,
-    overrides: {}, undatedDate: todayStr(), matchPlans: true, createCats: true,
+    overrides: {}, matches: {}, undatedDate: todayStr(), matchPlans: true, createCats: true,
+    learnAliases: true, defaultMethod: 'e-Transfer', dropSession: 'Drop-in',
   };
 }
 
@@ -2409,11 +2723,61 @@ function findHeaderRow(grid) {
 }
 function detectType(headers) {
   const H = headers.map(normKey);
-  const has = (t, key) => H.some(h => IMPORT_FIELDS[t].find(f => f.key === key).synN.includes(h));
+  const has = (t, key) => { const f = IMPORT_FIELDS[t].find(x => x.key === key); return !!f && H.some(h => f.synN.includes(h)); };
   const score = t => IMPORT_FIELDS[t].reduce((s, f) => s + (H.some(h => f.synN.includes(h)) ? (DISTINCT[t].includes(f.key) ? 2 : 1) : 0), 0);
-  // a members sheet always has someone's name; expense tables with "Payment 1 / Amount owed" columns otherwise look similar
-  const members = score('members') - (['name', 'firstName', 'lastName'].some(k => has('members', k)) ? 0 : 10);
-  return score('expenses') > members ? 'expenses' : 'members';
+  const scores = {
+    // a members sheet always has someone's name; expense tables with "Payment 1 / Amount owed" columns otherwise look similar
+    members: score('members') - (['name', 'firstName', 'lastName'].some(k => has('members', k)) ? 0 : 10),
+    expenses: score('expenses'),
+    dropins: score('dropins') - (has('dropins', 'name') ? 0 : 10) - (has('dropins', 'session') ? 0 : 3),
+    payments: score('payments') - (has('payments', 'name') && has('payments', 'amount') ? 0 : 10) - 1
+      + (state.members.length && has('payments', 'name') && has('payments', 'amount') && !has('members', 'feeTarget') ? 3 : 0),
+  };
+  return Object.entries(scores).reduce((best, cur) => (cur[1] > best[1] ? cur : best))[0];
+}
+/** For pasted rows with no headings (like a bank e-Transfer list), look at what's in each column. */
+function columnProfiles() {
+  const imp = ui.imp;
+  const isDate = v => !!parseDateFlexible(v, false) || looksLikeDate(v);
+  return imp.headers.map((_, c) => {
+    const vals = imp.rows.map(r => String((r || [])[c] ?? '').trim()).filter(Boolean).slice(0, 80);
+    const n = vals.length;
+    if (!n) return { c, n: 0, date: 0, money: 0, name: 0, unique: 0 };
+    return {
+      c, n,
+      date: vals.filter(isDate).length / n,
+      money: vals.filter(v => !isDate(v) && parseMoney(v) != null).length / n,
+      name: vals.filter(v => /^[^\d@/\\]{2,80}$/.test(v) && /\p{L}/u.test(v) && !isDate(v)).length / n,
+      unique: new Set(vals.map(v => v.toLowerCase())).size / n,
+    };
+  });
+}
+function contentColumns() {
+  const prof = columnProfiles(), used = new Set();
+  const pick = (score, min) => {
+    let best = null;
+    for (const p of prof) {
+      if (!p.n || used.has(p.c)) continue;
+      const s = score(p);
+      if (s >= min && (!best || s > best.s)) best = { c: p.c, s };
+    }
+    if (best) used.add(best.c);
+    return best ? best.c : -1;
+  };
+  const date = pick(p => p.date, 0.6);
+  const money = pick(p => p.money, 0.6);
+  const name = pick(p => (p.unique >= 0.3 ? p.name * (0.5 + p.unique / 2) : 0), 0.45);
+  return { date, money, name };
+}
+function inferMapping(type) {
+  const map = Object.fromEntries(IMPORT_FIELDS[type].map(f => [f.key, -1]));
+  const { date, money, name } = contentColumns();
+  const set = (k, c) => { if (k in map && c >= 0) map[k] = c; };
+  if (type === 'payments') { set('date', date); set('amount', money); set('name', name); }
+  else if (type === 'dropins') { set('date', date); set('paid', money); set('name', name); }
+  else if (type === 'members') { set('paymentDate', date); set('paid', money); set('name', name); }
+  else { set('date', date); set('total', money); set('description', name); }
+  return map;
 }
 function autoMap(headers, type) {
   const fields = IMPORT_FIELDS[type], H = headers.map(normKey), used = new Set(), map = {};
@@ -2487,6 +2851,9 @@ function parseDateFlexible(v, dayFirst) {
       return mk(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
     }
   }
+  const monthNo = w => ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(w.slice(0, 3).toLowerCase()) + 1;
+  if ((m = s.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i)) && monthNo(m[1])) return mk(+m[3], monthNo(m[1]), +m[2]); // Sept 26, 2026
+  if ((m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{4})$/i)) && monthNo(m[2])) return mk(+m[3], monthNo(m[2]), +m[1]); // 26 Sep 2026
   if (MONTHS_RE.test(s) && /\d{4}/.test(s)) {
     const t = Date.parse(s);
     if (!isNaN(t)) return toDateStr(new Date(t));
@@ -2501,9 +2868,9 @@ function normalizeMethod(v) {
   if (!s) return 'Other';
   const exact = METHODS.find(m => m.toLowerCase() === s);
   if (exact) return exact;
-  if (/venmo|e[\s-]?transfer|interac|\bemt\b|zelle|paypal|cash ?app|e-?tfr/.test(s)) return 'e-Transfer/Venmo';
+  if (/venmo|e[\s-]?transfer|interac|\bemt\b|zelle|paypal|cash ?app|e-?tfr|email|mobile|autodeposit/.test(s)) return 'e-Transfer';
   if (/cash/.test(s)) return 'Cash';
-  if (/cheque|check|\bchq\b/.test(s)) return 'Check';
+  if (/cheque|check|\bchq\b/.test(s)) return 'Cheque';
   if (/bank|wire|\beft\b|\bach\b|direct deposit|transfer/.test(s)) return 'Bank Transfer';
   if (/credit|card|visa|master|amex|debit/.test(s)) return 'Credit';
   return 'Other';
@@ -2572,22 +2939,37 @@ const isBlankRow = r => !r || !r.some(c => String(c ?? '').trim() !== '');
 function startImport(grid, source) {
   const imp = ui.imp;
   imp.error = '';
-  if (grid.filter(r => !isBlankRow(r)).length < 2) {
-    imp.error = grid.some(r => !isBlankRow(r)) ? 'Only one row was found. Include the header row plus at least one row of data.' : 'No rows were found. Is it empty?';
-    render();
-    return;
-  }
+  if (!grid.some(r => !isBlankRow(r))) { imp.error = 'No rows were found. Is it empty?'; render(); return; }
+  imp.grid = grid;
   imp.source = source;
-  imp.headerRow = findHeaderRow(grid);
-  imp.headers = (grid[imp.headerRow] || []).map((h, i) => String(h ?? '').trim() || `Column ${colLetter(i)}`);
-  imp.rows = grid.slice(imp.headerRow + 1);
-  imp.resolvedType = imp.type === 'auto' ? detectType(imp.headers) : imp.type;
-  imp.mapping = autoMap(imp.headers, imp.resolvedType);
+  const best = findHeaderRow(grid);
+  const noHeader = headerScore(grid[best]) < 2; // e.g. rows copied straight from online banking
+  setHeaderRow(noHeader ? grid.findIndex(r => !isBlankRow(r)) : best, noHeader, true);
+  if (!imp.rows.some(r => !isBlankRow(r))) { imp.error = 'Only a heading row was found. Include at least one row of data under it.'; render(); return; }
+  imp.stage = 'review';
+  render();
+}
+/** Re-reads the grid with the headings on a given row (or no heading row at all). */
+function setHeaderRow(idx, noHeader, retype) {
+  const imp = ui.imp, grid = imp.grid;
+  imp.headerRow = clamp(idx, 0, Math.max(0, grid.length - 1));
+  imp.noHeader = noHeader;
+  imp.firstDataRow = noHeader ? imp.headerRow : imp.headerRow + 1;
+  imp.rows = grid.slice(imp.firstDataRow);
+  const head = noHeader ? [] : grid[imp.headerRow] || [];
+  let width = 0;
+  for (const r of [head, ...imp.rows.slice(0, 300)]) (r || []).forEach((c, i) => { if (String(c ?? '').trim()) width = Math.max(width, i + 1); });
+  imp.headers = Array.from({ length: Math.max(1, width) }, (_, i) => String(head[i] ?? '').trim() || `Column ${colLetter(i)}`);
+  if (retype) imp.resolvedType = imp.type !== 'auto' ? imp.type : noHeader ? (Object.values(contentColumns()).every(c => c >= 0) ? 'payments' : 'members') : detectType(imp.headers);
+  remapImport();
+}
+function remapImport() {
+  const imp = ui.imp;
+  imp.mapping = imp.noHeader ? inferMapping(imp.resolvedType) : autoMap(imp.headers, imp.resolvedType);
   imp.dayFirst = detectDayFirst();
   imp.dupMode = 'skip';
   imp.overrides = {};
-  imp.stage = 'review';
-  render();
+  imp.matches = {};
 }
 
 async function readImportFile(file) {
@@ -2634,20 +3016,20 @@ const mappedValues = r => Object.values(ui.imp.mapping).filter(ci => ci >= 0).ma
 function repeatedHeader(r) {
   const H = ui.imp.headers;
   let same = 0;
-  H.forEach((h, j) => { const k = normKey(r[j]); if (k && !/^column[a-z]+$/.test(normKey(h)) && k === normKey(h)) same++; });
+  // only words count: numbers that happen to match a cell in the heading row (side-by-side tables) don't
+  H.forEach((h, j) => { const k = normKey(r[j]); if (k && /[a-z]/.test(k) && !/^column[a-z]+$/.test(normKey(h)) && k === normKey(h)) same++; });
   return same >= 2;
 }
 
 function buildMemberRows() {
   const imp = ui.imp, map = imp.mapping, def = state.settings.defaultFee;
-  const existing = new Set(imp.mode === 'append' ? state.members.map(m => normName(m.name)) : []);
   const seen = new Map();
   const payKeys = ['paid', 'paid2', 'paid3', 'paid4'].filter(k => map[k] >= 0);
   const results = [];
   imp.rows.forEach((r, i) => {
     const values = mappedValues(r);
     if (!values.some(Boolean) || repeatedHeader(r)) return;
-    const get = rowGetter(r), rowNum = i + imp.headerRow + 2, errors = [], notes = [];
+    const get = rowGetter(r), rowNum = i + imp.firstDataRow + 1, errors = [], notes = [];
     let skip = false;
     const name = (get('name') || [get('firstName'), get('lastName')].filter(Boolean).join(' ')).replace(/\s+/g, ' ').trim();
     if (!name) {
@@ -2709,13 +3091,15 @@ function buildMemberRows() {
     if (ddS && !dueDate) notes.push(`Couldn’t read due date “${ddS}”`);
     if (!errors.length && !hasFee && !paid && !plan) { notes.push('No fee or payments yet, so not ticked'); skip = true; }
 
-    const rec = { name, email: get('email'), phone: get('phone'), feeTarget: fee, planId: plan ? plan.id : '', payments, paid, method: normalizeMethod(get('method')), paymentDate, undated, dueDate, notes: get('notes') };
+    const rec = { name, aliases: parseAliases(get('aliases'), name), email: get('email'), phone: get('phone'), feeTarget: fee, planId: plan ? plan.id : '', payments, paid, method: normalizeMethod(get('method')), paymentDate, undated, dueDate, notes: get('notes') };
     let dup = false;
     if (name && !errors.length) {
-      const key = normName(name);
+      const key = tokenKey(name);
       if (seen.has(key)) notes.push(`Same person as row ${seen.get(key)}, so payments are combined`);
       else seen.set(key, rowNum);
-      dup = existing.has(key);
+      const existing = imp.mode === 'append' ? matchMember(name) : null;
+      dup = !!existing;
+      if (existing && !samePerson(existing.name, name)) notes.push(`Matches ${existing.name} (other name)`);
       if (dup && imp.dupMode === 'skip') skip = true;
     }
     const defaultInclude = !skip;
@@ -2734,7 +3118,7 @@ function buildExpenseRows() {
     if (repeatedHeader(r)) { section = String(r[imp.mapping.description] ?? '').trim(); return; }
     const values = mappedValues(r);
     if (!values.some(Boolean)) return;
-    const get = rowGetter(r), rowNum = i + imp.headerRow + 2, errors = [], notes = [];
+    const get = rowGetter(r), rowNum = i + imp.firstDataRow + 1, errors = [], notes = [];
     let skip = false;
     const dS = get('date');
     let date = parseDateFlexible(dS, imp.dayFirst);
@@ -2798,12 +3182,106 @@ function buildExpenseRows() {
   return results;
 }
 
+function buildDropInRows() {
+  const imp = ui.imp, results = [];
+  const dupKey = d => `${tokenKey(d.name)}|${d.date}|${normKey(d.session)}`;
+  const existing = new Set(imp.mode === 'append' ? state.dropIns.map(dupKey) : []);
+  imp.rows.forEach((r, i) => {
+    const values = mappedValues(r);
+    if (!values.some(Boolean) || repeatedHeader(r)) return;
+    const get = rowGetter(r), rowNum = i + imp.firstDataRow + 1, errors = [], notes = [];
+    let skip = false;
+    const name = tidyName(get('name'));
+    if (!name) {
+      if (values.every(v => !v || parseMoney(v) === 0)) return;
+      errors.push('No name');
+    } else if (/\btotals?\b/i.test(name)) errors.push('Looks like a totals row');
+    else if (looksLikeDate(name) || /^-?[$\d.,\s]+$/.test(name)) errors.push('Name looks like a date or amount');
+    const dS = get('date');
+    let date = parseDateFlexible(dS, imp.dayFirst);
+    if (dS && !date) notes.push(`Couldn’t read date “${dS}”`);
+    const undated = !date;
+    date = date || imp.undatedDate;
+    const session = get('session').replace(/\s*\n\s*/g, '; ');
+    const feeS = get('fee'), paidS = get('paid');
+    let fee = feeS ? parseMoney(feeS) : null, paid = paidS ? parseMoney(paidS) : null;
+    if (feeS && fee == null) errors.push(`Charge “${feeS}” isn’t a number`);
+    if (paidS && paid == null) {
+      if (/^(y|yes|paid|x|✓|✔)$/i.test(paidS)) paid = fee ?? state.settings.dropInFee;
+      else if (/^(n|no|unpaid)$/i.test(paidS)) paid = 0;
+      else errors.push(`Paid “${paidS}” isn’t a number`);
+    }
+    if (fee == null && paid != null) fee = paid;
+    if (fee == null) { fee = 0; if (!errors.length) notes.push('No charge recorded'); }
+    paid = paid ?? 0;
+    if (!errors.length && !fee && !paid && !session) { notes.push('Nothing recorded for them, so not ticked'); skip = true; }
+    const member = name ? matchMember(name) : null;
+    if (member) notes.push(`Also a member (${member.name})`);
+    let method = normalizeMethod(get('method'));
+    if (method === 'Other') method = imp.defaultMethod;
+    const rec = { name, date, undated, session, fee, paid, method, notes: get('notes') };
+    const dup = !errors.length && existing.has(dupKey(rec));
+    if (dup) { notes.push('Already recorded'); if (imp.dupMode === 'skip') skip = true; }
+    results.push({ rowNum, rec, errors, notes, dup, defaultInclude: !skip, include: !errors.length && (imp.overrides[rowNum] ?? !skip) });
+  });
+  return results;
+}
+
+/** Payments such as a bank e-Transfer list: each one is matched to a member (by any of their names) or a drop-in. */
+function buildPaymentRows() {
+  const imp = ui.imp, results = [];
+  imp.rows.forEach((r, i) => {
+    const values = mappedValues(r);
+    if (!values.some(Boolean) || repeatedHeader(r)) return;
+    const get = rowGetter(r), rowNum = i + imp.firstDataRow + 1, errors = [], notes = [];
+    const name = get('name').replace(/\s+/g, ' ').trim();
+    const aS = get('amount'), amount = parseMoney(aS);
+    if (!name) errors.push('No name');
+    else if (/\btotals?\b/i.test(name)) errors.push('Looks like a totals row');
+    else if (looksLikeDate(name) || /^-?[$\d.,\s]+$/.test(name)) errors.push('Name looks like a date or amount');
+    if (!aS) errors.push('No amount');
+    else if (amount == null) errors.push(`Amount “${aS}” isn’t a number`);
+    else if (amount <= 0) errors.push('Money going out (add it as an expense instead)');
+    const dS = get('date');
+    let date = parseDateFlexible(dS, imp.dayFirst);
+    if (dS && !date) notes.push(`Couldn’t read date “${dS}”`);
+    const undated = !date;
+    date = date || imp.undatedDate;
+    let method = normalizeMethod(get('method'));
+    if (method === 'Other') method = imp.defaultMethod;
+
+    const member = !errors.length ? matchMember(name) : null;
+    const visits = !errors.length ? state.dropIns.filter(d => samePerson(d.name, name)) : [];
+    const dropOwing = visits.some(d => dropOwed(d) > 0);
+    // someone who is both a member and a past drop-in: an unpaid drop-in is the likelier reason for a small payment
+    let auto = member && !(dropOwing && memberBalance(member) <= 0) ? member.id : visits.length ? 'dropin' : 'skip';
+    let dup = false;
+    if (member && member.payments.some(p => p.date === date && Math.abs(p.amount - amount) < 0.005)) dup = true;
+    // same amount on the same day (or on a visit imported without a date); regulars paying the same rate each week aren't duplicates
+    if (visits.length && !dropOwing && visits.some(d => Math.abs(d.paid - amount) < 0.005 && (d.date === date || d.dateUnknown))) dup = true;
+    if (dup) { notes.push('Looks already recorded, so not imported'); auto = 'skip'; }
+    else if (member && !samePerson(member.name, name)) notes.push(`Matched to ${member.name} by their other name`);
+    else if (!member && visits.length) notes.push(visits.some(d => dropOwed(d) > 0) ? 'Pays their unpaid drop-in' : 'Drop-in (seen before)');
+    const target = errors.length ? 'skip' : (imp.matches[rowNum] ?? auto);
+    if (!member && !visits.length && !errors.length && target === 'skip') notes.push(state.members.some(m => memberNames(m).some(n => samePerson(n, name))) ? 'More than one member has this name; choose who' : 'No member or drop-in with this name; choose who it’s from');
+    if (!errors.length && target !== 'skip' && target !== 'dropin' && target !== auto) {
+      const m = findMember(target);
+      if (m && imp.learnAliases && !memberNames(m).some(n => samePerson(n, name))) notes.push(`Will remember “${tidyName(name)}” as another name for ${m.name}`);
+    }
+    results.push({ rowNum, rec: { name, date, undated, amount: amount ?? 0, method, notes: get('notes') }, errors, notes, dup, target, defaultInclude: auto !== 'skip', include: !errors.length && target !== 'skip' });
+  });
+  return results;
+}
+
+const ROW_BUILDERS = { members: buildMemberRows, expenses: buildExpenseRows, dropins: buildDropInRows, payments: buildPaymentRows };
+const buildImportRows = () => ROW_BUILDERS[ui.imp.resolvedType]();
+
 function doImport() {
   const imp = ui.imp, type = imp.resolvedType;
-  const all = type === 'members' ? buildMemberRows() : buildExpenseRows();
+  const all = buildImportRows();
   const results = all.filter(r => r.include);
   if (!results.length) { toast('No rows are ticked to import'); return; }
-  const existingCount = type === 'members' ? state.members.length : state.expenses.length;
+  const existingCount = { members: state.members.length, expenses: state.expenses.length, dropins: state.dropIns.length, payments: 0 }[type];
   const source = imp.source || 'pasted data';
 
   const run = () => {
@@ -2812,15 +3290,18 @@ function doImport() {
     let summary;
     if (type === 'members') {
       if (imp.mode === 'replace') { state.members = []; ui.expanded.clear(); }
-      const existing = new Map(state.members.map(m => [normName(m.name), m]));
+      const before = [...state.members];
       const touched = new Map();
       let added = 0, updated = 0, payments = 0;
       for (const { rec, dup } of results) {
-        const key = normName(rec.name);
+        const key = tokenKey(rec.name);
         let m = touched.get(key);
-        if (!m && dup && imp.dupMode === 'merge') { m = existing.get(key); if (m) { touched.set(key, m); updated++; } }
+        if (!m && dup && imp.dupMode === 'merge') {
+          m = before.find(x => memberNames(x).some(n => samePerson(n, rec.name)));
+          if (m) { touched.set(key, m); updated++; }
+        }
         if (!m) {
-          m = { id: uid(), name: rec.name, email: rec.email, phone: rec.phone, feeTarget: rec.feeTarget, planId: rec.planId, dueDate: rec.dueDate, notes: rec.notes, payments: [], createdAt: now, updatedAt: now };
+          m = { id: uid(), name: rec.name, aliases: rec.aliases, email: rec.email, phone: rec.phone, feeTarget: rec.feeTarget, planId: rec.planId, dueDate: rec.dueDate, notes: rec.notes, payments: [], createdAt: now, updatedAt: now };
           state.members.push(m);
           touched.set(key, m);
           added++;
@@ -2829,6 +3310,7 @@ function doImport() {
           if (!m.phone && rec.phone) m.phone = rec.phone;
           if (!m.dueDate && rec.dueDate) m.dueDate = rec.dueDate;
           if (!m.planId && rec.planId) m.planId = rec.planId;
+          for (const a of [rec.name, ...rec.aliases]) if (!memberNames(m).some(n => samePerson(n, a))) m.aliases.push(a);
           if (rec.notes && !m.notes.includes(rec.notes)) m.notes = m.notes ? `${m.notes}\n${rec.notes}` : rec.notes;
           m.updatedAt = now;
         }
@@ -2838,7 +3320,7 @@ function doImport() {
         });
       }
       summary = `Imported ${plural(added, 'member')}${updated ? `, updated ${updated} existing` : ''} and ${plural(payments, 'payment')} from ${source}${imp.mode === 'replace' ? ' (replaced previous members)' : ''}`;
-    } else {
+    } else if (type === 'expenses') {
       if (imp.mode === 'replace') state.expenses = [];
       for (const { rec } of results) {
         if (!state.categories.includes(rec.category)) {
@@ -2850,17 +3332,42 @@ function doImport() {
         state.expenses.push({ id: uid(), ...fields, photos: [], reimbursedAt: rec.reimbursement === 'reimbursed' ? now : null, createdAt: now, updatedAt: now });
       }
       summary = `Imported ${plural(results.length, 'expense')} (${money(sumBy(results, r => r.rec.total))}) from ${source}${imp.mode === 'replace' ? ' (replaced previous expenses)' : ''}`;
+    } else if (type === 'dropins') {
+      if (imp.mode === 'replace') state.dropIns = [];
+      for (const { rec } of results) {
+        const { undated, ...fields } = rec;
+        state.dropIns.push({ id: uid(), ...fields, dateUnknown: undated, createdAt: now, updatedAt: now });
+      }
+      summary = `Imported ${plural(results.length, 'drop-in visit')} (${money(sumBy(results, r => r.rec.paid))} paid) from ${source}${imp.mode === 'replace' ? ' (replaced previous drop-ins)' : ''}`;
+    } else {
+      let toMembers = 0, toDropIns = 0, learned = 0;
+      for (const { rec, target } of results) {
+        if (target === 'dropin') {
+          const open = state.dropIns.filter(d => samePerson(d.name, rec.name) && dropOwed(d) > 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+          if (open) Object.assign(open, { paid: round2(open.paid + rec.amount), method: rec.method, updatedAt: now });
+          else state.dropIns.push({ id: uid(), name: tidyName(rec.name), date: rec.date, session: imp.dropSession.trim(), fee: rec.amount, paid: rec.amount, method: rec.method, notes: rec.notes || `Imported from ${source}`, createdAt: now, updatedAt: now });
+          toDropIns++;
+          continue;
+        }
+        const m = findMember(target);
+        if (!m) continue;
+        m.payments.push({ id: uid(), amount: rec.amount, method: rec.method, date: rec.date, note: rec.notes || `Imported from ${source}`, createdAt: now, updatedAt: now });
+        m.updatedAt = now;
+        if (imp.learnAliases && !memberNames(m).some(n => samePerson(n, rec.name))) { m.aliases.push(tidyName(rec.name)); learned++; }
+        toMembers++;
+      }
+      summary = `Imported ${plural(results.length, 'payment')} (${money(sumBy(results, r => r.rec.amount))}) from ${source}: ${toMembers} from members, ${toDropIns} from drop-ins${learned ? `; learned ${plural(learned, 'other name')}` : ''}`;
     }
     ui.imp = freshImport();
     commit(summary, { type: 'import' });
     undoable(summary, snap, 'import from ' + source);
-    goTab(type);
+    goTab(type === 'payments' ? 'members' : type);
   };
 
   if (imp.mode === 'replace' && existingCount) {
     confirmDialog({
       title: 'Replace existing records?',
-      message: `This deletes the ${plural(existingCount, type === 'members' ? 'member' : 'expense')} currently in the tracker${type === 'members' ? ' (and all of their payments)' : ''} and replaces them with ${plural(results.length, 'imported row')}.`,
+      message: `This deletes the ${plural(existingCount, IMPORT_NOUN[type])} currently in the tracker${type === 'members' ? ' (and all of their payments)' : ''} and replaces them with ${plural(results.length, 'imported row')}.`,
       confirmLabel: 'Replace',
       danger: true,
       onConfirm: run,
@@ -2886,11 +3393,12 @@ function viewData() {
       <div class="export-list">
         ${exportRow('members', 'Members & balances', plural(state.members.length, 'member'))}
         ${exportRow('payments', 'Payment history', plural(nPayments, 'payment'))}
+        ${exportRow('dropins', 'Drop-ins', plural(state.dropIns.length, 'visit'))}
         ${exportRow('expenses', 'Expense ledger', plural(state.expenses.length, 'expense'))}
         ${exportRow('budget', 'Budget by category', plural(cats().length, 'category', 'categories'))}
         ${exportRow('summary', 'Financial summary', 'Net balance, float and totals')}
       </div>
-      <button class="btn primary" data-action="export-all">${icon('download')}Export everything (5 files)</button>
+      <button class="btn primary" data-action="export-all">${icon('download')}Export everything (${Object.keys(EXPORTS).length} files)</button>
       <p class="hint" style="margin-top:8px">If your browser asks whether to allow multiple downloads, say yes. Receipt photos are included in backups, not CSVs.</p>
     </section>
     <section class="card">
@@ -2916,7 +3424,7 @@ function importInput() {
     <div>
       <label class="field"><span>What are you importing?</span>
         <select id="impTypeInput">
-          ${[['auto', 'Work it out from the column headings'], ['members', 'Members & fees'], ['expenses', 'Expenses']].map(([v, l]) => `<option value="${v}" ${imp.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+          ${[['auto', 'Work it out from what’s in it'], ...Object.entries(IMPORT_TYPES)].map(([v, l]) => `<option value="${v}" ${imp.type === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
       </label>
       <div class="dropzone" id="dropzone">
@@ -2927,7 +3435,7 @@ function importInput() {
       </div>
     </div>
     <div>
-      <label class="field"><span>…or copy the cells in your spreadsheet (including the header row) and paste them here</span>
+      <label class="field"><span>…or copy cells from a spreadsheet, or rows from your online banking’s e-Transfer list, and paste them here</span>
         <textarea id="importPaste" rows="8" placeholder="Name&#9;Fee&#9;Payment 1&#9;Payment 2&#10;Alex Chen&#9;800&#9;325&#9;260">${esc(imp.pasteDraft)}</textarea>
       </label>
       <div class="row-end" style="margin-top:10px"><button class="btn primary" data-action="import-paste">Preview import</button></div>
@@ -2944,7 +3452,7 @@ function importSheetPicker() {
     const rows = s.rows.filter(r => !isBlankRow(r)).length;
     const h = findHeaderRow(s.rows);
     const score = headerScore(s.rows[h]);
-    const kind = score >= 2 ? (detectType(s.rows[h] || []) === 'members' ? 'members & fees' : 'expenses') : '';
+    const kind = score >= 2 ? { members: 'members & fees', dropins: 'drop-ins', payments: 'payments', expenses: 'expenses' }[detectType(s.rows[h] || [])] : '';
     return `<div class="export-item"><div><div class="strong">${esc(s.name)}${s.hidden ? ' <span class="tag neutral">hidden tab</span>' : ''}</div>
       <div class="muted small">${plural(rows, 'row')}${kind ? ` · looks like ${kind}` : ' · no recognisable column headings'}</div></div>
       <button class="btn sm ${kind ? 'primary' : ''}" data-action="import-sheet" data-index="${i}">Use this tab</button></div>`;
@@ -2953,16 +3461,19 @@ function importSheetPicker() {
 
 function importReview() {
   const imp = ui.imp, type = imp.resolvedType, fields = IMPORT_FIELDS[type];
-  const results = type === 'members' ? buildMemberRows() : buildExpenseRows();
+  const results = buildImportRows();
   const ready = results.filter(r => r.include);
   const problems = results.filter(r => r.errors.length);
   const unticked = results.filter(r => !r.errors.length && !r.include);
   const dups = results.filter(r => !r.errors.length && r.dup);
-  const missing = type === 'members'
-    ? (imp.mapping.name < 0 && imp.mapping.firstName < 0 && imp.mapping.lastName < 0 ? 'Choose which column holds member names.' : '')
-    : (imp.mapping.total < 0 && imp.mapping.unitPrice < 0 ? 'Choose the column that holds the amount (Total or Unit price).' : '');
-  const existingCount = type === 'members' ? state.members.length : state.expenses.length;
-  const noun = type === 'members' ? 'member' : 'expense';
+  const missing = {
+    members: imp.mapping.name < 0 && imp.mapping.firstName < 0 && imp.mapping.lastName < 0 ? 'Choose which column holds member names.' : '',
+    expenses: imp.mapping.total < 0 && imp.mapping.unitPrice < 0 ? 'Choose the column that holds the amount (Total or Unit price).' : '',
+    dropins: imp.mapping.name < 0 ? 'Choose which column holds people’s names.' : '',
+    payments: imp.mapping.name < 0 || imp.mapping.amount < 0 ? 'Choose the columns that hold the name on each payment and the amount.' : '',
+  }[type];
+  const existingCount = { members: state.members.length, expenses: state.expenses.length, dropins: state.dropIns.length, payments: 0 }[type];
+  const noun = IMPORT_NOUN[type];
 
   const sampleOf = ci => {
     if (ci < 0) return '';
@@ -2980,6 +3491,13 @@ function importReview() {
   if (undated) {
     options.push(`<div class="inline-date"><span>${plural(undated, 'ticked row')} ${type === 'members' ? 'have payments with no date' : 'have no date'}. Record ${undated === 1 ? 'it' : 'them'} as dated</span><input type="date" id="impUndated" value="${esc(imp.undatedDate)}" aria-label="Date to use"></div>`);
   }
+  if (type === 'payments' || type === 'dropins') {
+    options.push(`<div class="inline-date"><span>Payment method when the file doesn’t say</span><select id="impDefaultMethod" style="width:auto">${METHODS.map(x => `<option ${x === imp.defaultMethod ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>`);
+  }
+  if (type === 'payments') {
+    options.push(`<label class="check"><input type="checkbox" id="impLearnAliases" ${imp.learnAliases ? 'checked' : ''}> When you match a name to a member by hand, remember it as one of their other names</label>`);
+    if (results.some(r => r.target === 'dropin')) options.push(`<div class="inline-date"><span>New drop-in visits are for</span><input type="text" id="impDropSession" value="${esc(imp.dropSession)}" maxlength="60" style="width:200px" aria-label="Practice or event"></div>`);
+  }
   if (type === 'members' && state.feePlans.length) {
     options.push(`<label class="check"><input type="checkbox" id="impMatchPlans" ${imp.matchPlans ? 'checked' : ''}> Put people on a fee plan when their fee matches it exactly (${state.feePlans.map(p => `${esc(p.name)} ${money(planTotal(p))}`).join(', ')})</label>`);
   }
@@ -2996,21 +3514,31 @@ function importReview() {
           : [['skip', 'Leave likely duplicates unticked'], ['new', 'Import them anyway']]
         ).map(([v, l]) => `<option value="${v}" ${imp.dupMode === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select></label>` : '';
+  const headingControl = `<div class="import-options" style="margin:4px 0 10px">
+      <div class="inline-date"><span>${imp.noHeader ? 'The data starts on row' : 'Column headings are on row'}</span><input type="number" id="impHeaderRow" min="1" max="${imp.grid.length}" value="${imp.headerRow + 1}" style="width:90px" aria-label="Row number"></div>
+      <label class="check"><input type="checkbox" id="impNoHeader" ${imp.noHeader ? 'checked' : ''}> There’s no heading row (e.g. rows copied straight from online banking)</label>
+    </div>`;
+  const stepHint = {
+    members: 'Separate Payment 1, Payment 2 and Payment 3 columns each become their own payment. An “Other names” column fills in the names people go by on e-Transfers.',
+    expenses: '',
+    dropins: 'Each row becomes one drop-in visit. A list of the practices they came to (like “TAG Jan 6, 12”) is kept with the visit.',
+    payments: 'Each row is one payment. It’s matched to a member using their name or any of their other names, or to a drop-in.',
+  }[type];
 
   return `
   <div class="review-summary">
     <label class="row"><span class="strong">Importing as</span>
       <select id="impType">
-        <option value="members" ${type === 'members' ? 'selected' : ''}>Members & fees</option>
-        <option value="expenses" ${type === 'expenses' ? 'selected' : ''}>Expenses</option>
+        ${Object.entries(IMPORT_TYPES).map(([v, l]) => `<option value="${v}" ${type === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
     </label>
-    <span class="muted">${plural(results.length, 'row')} from <strong>${esc(imp.source)}</strong>${imp.headerRow ? ` (headings found on row ${imp.headerRow + 1})` : ''}</span>
+    <span class="muted">${plural(results.length, 'row')} from <strong>${esc(imp.source)}</strong></span>
     ${imp.workbook && imp.workbook.sheets.length > 1 ? '<button class="link" data-action="import-pick-another">Choose a different tab</button>' : ''}
   </div>
 
   <h3 class="step-h">1. Match your columns</h3>
-  <p class="hint">Your column headings were matched automatically. Fix anything that looks wrong.${type === 'members' ? ' Separate Payment 1, Payment 2 and Payment 3 columns each become their own payment.' : ''}</p>
+  ${headingControl}
+  <p class="hint">${imp.noHeader ? 'There are no headings, so columns were matched by what’s in them.' : 'Your column headings were matched automatically.'} Fix anything that looks wrong. ${stepHint}</p>
   <div class="mapping-grid">${mapping}</div>
   <div class="import-options">${options.join('')}</div>
 
@@ -3018,16 +3546,16 @@ function importReview() {
   ${missing
     ? `<div class="notice crit">${icon('alert')}<span class="notice-text">${missing}</span></div>`
     : `<div class="preview-stats"><span class="tag good">${icon('check')}${ready.length} ticked</span>${unticked.length ? `<span class="tag neutral">${unticked.length} not ticked</span>` : ''}${problems.length ? `<span class="tag crit">${icon('alert')}${problems.length} with problems</span>` : ''}${dups.length ? `<span class="tag warn">${icon('alert')}${dups.length} already in tracker</span>` : ''}
-         <span class="spacer"></span><button class="link small" data-action="import-select-all">Tick all</button><button class="link small" data-action="import-select-none">Untick all</button><button class="link small" data-action="import-select-default">Reset ticks</button></div>
+         <span class="spacer"></span>${type === 'payments' ? '<span class="hint">Use the “Who is it?” column to choose or change who each payment is from.</span>' : '<button class="link small" data-action="import-select-all">Tick all</button><button class="link small" data-action="import-select-none">Untick all</button><button class="link small" data-action="import-select-default">Reset ticks</button>'}</div>
        <div class="table-wrap preview">${previewTable(results, type)}</div>
        ${results.length > 250 ? `<p class="hint" style="margin-top:6px">Showing the first 250 of ${results.length} rows; the rest follow the same ticks.</p>` : ''}`}
 
-  <h3 class="step-h">3. Choose how to add them</h3>
+  ${type === 'payments' ? '' : `<h3 class="step-h">3. Choose how to add them</h3>
   <div class="mode-options">
     <label class="radio-card"><input type="radio" name="impMode" value="append" ${imp.mode === 'append' ? 'checked' : ''}><span><strong>Append</strong>: add to the ${plural(existingCount, noun)} already in the tracker</span></label>
     <label class="radio-card"><input type="radio" name="impMode" value="replace" ${imp.mode === 'replace' ? 'checked' : ''}><span><strong>Replace</strong>: delete the current ${plural(existingCount, noun)}${type === 'members' ? ' (and their payments)' : ''} first, then import</span></label>
   </div>
-  ${dupControl}
+  ${dupControl}`}
   <div class="row-end">
     <button class="btn" data-action="import-reset">Cancel</button>
     <button class="btn primary" data-action="import-commit" ${missing || !ready.length ? 'disabled' : ''}>${icon('upload')}Import ${plural(ready.length, 'row')}</button>
@@ -3049,6 +3577,24 @@ function previewTable(results, type) {
   };
   const cls = r => (r.errors.length ? 'row-err' : !r.include ? 'row-skip' : '');
   const shown = results.slice(0, 250);
+  if (type === 'payments') {
+    const memberOpts = [...state.members].sort(byName).map(m => [m.id, m.name]);
+    const who = r => `<select data-match="${r.rowNum}" ${r.errors.length ? 'disabled' : ''} aria-label="Who row ${r.rowNum} is from" style="min-width:170px">
+        <option value="skip" ${r.target === 'skip' ? 'selected' : ''}>Don’t import</option>
+        <option value="dropin" ${r.target === 'dropin' ? 'selected' : ''}>A drop-in (not a member)</option>
+        ${memberOpts.length ? `<optgroup label="Members">${memberOpts.map(([id, n]) => `<option value="${id}" ${r.target === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>` : ''}
+      </select>`;
+    const res = r => (r.errors.length ? `<span class="res crit">${esc(r.errors.join('; '))}</span>` : r.include ? `<span class="res ok">${icon('check')} Ready</span>` : '<span class="res">Not importing</span>')
+      + (r.notes.length ? `<div class="muted small">${esc(r.notes.join(' · '))}</div>` : '');
+    return `<table class="data"><thead><tr><th>Who is it?</th><th>Row</th><th>Date</th><th>Name on the payment</th><th class="num">Amount</th><th>Method</th><th>Result</th></tr></thead><tbody>
+      ${shown.map(r => { const x = r.rec; return `<tr class="${cls(r)}"><td>${who(r)}</td><td class="muted">${r.rowNum}</td><td class="nowrap">${esc(fmtDate(x.date))}${x.undated ? ' <span class="muted small">(no date)</span>' : ''}</td><td class="strong">${d(x.name)}</td><td class="num">${money(x.amount)}</td><td>${esc(x.method)}</td><td>${res(r)}</td></tr>`; }).join('')}
+    </tbody></table>`;
+  }
+  if (type === 'dropins') {
+    return `<table class="data"><thead><tr><th></th><th>Row</th><th>Name</th><th>Date</th><th>Practice / event</th><th class="num">Charge</th><th class="num">Paid</th><th>Result</th></tr></thead><tbody>
+      ${shown.map(r => { const x = r.rec; return `<tr class="${cls(r)}"><td>${tick(r)}</td><td class="muted">${r.rowNum}</td><td class="strong">${d(x.name)}</td><td class="nowrap">${esc(fmtDate(x.date))}${x.undated ? ' <span class="muted small">(no date)</span>' : ''}</td><td>${d(truncate(x.session, 60))}</td><td class="num">${money(x.fee)}</td><td class="num">${money(x.paid)}</td><td>${result(r)}</td></tr>`; }).join('')}
+    </tbody></table>`;
+  }
   if (type === 'members') {
     return `<table class="data"><thead><tr><th></th><th>Row</th><th>Name</th><th>Contact</th><th class="num">Fee</th><th class="num">Paid</th><th>Payments</th><th>Method</th><th>Paid on</th><th>Notes</th><th>Result</th></tr></thead><tbody>
       ${shown.map(r => { const x = r.rec; return `<tr class="${cls(r)}"><td>${tick(r)}</td><td class="muted">${r.rowNum}</td><td class="strong">${d(x.name)}</td><td>${d([x.email, x.phone].filter(Boolean).join(' · '))}</td><td class="num">${money(x.feeTarget)}</td><td class="num">${money(x.paid)}</td><td class="nowrap">${x.payments.length ? x.payments.map(a => money(a)).join(' + ') : '<span class="muted">—</span>'}</td><td>${x.paid > 0 ? esc(x.method) : '<span class="muted">—</span>'}</td><td class="nowrap">${x.paid > 0 ? esc(fmtDate(x.paymentDate)) + (x.undated ? ' <span class="muted small">(no date)</span>' : '') : '<span class="muted">—</span>'}</td><td>${d(truncate(x.notes, 40))}</td><td>${result(r)}</td></tr>`; }).join('')}
@@ -3061,7 +3607,7 @@ function previewTable(results, type) {
 
 function setAllTicks(mode) {
   const imp = ui.imp;
-  const results = imp.resolvedType === 'members' ? buildMemberRows() : buildExpenseRows();
+  const results = buildImportRows();
   imp.overrides = {};
   if (mode !== 'default') for (const r of results) if (!r.errors.length) imp.overrides[r.rowNum] = mode === 'all';
   render();
@@ -3094,7 +3640,26 @@ function formatGuide() {
         </ul>
       </div>
     </div>
-    <p class="hint" style="margin-top:10px">Dates can be 2026-03-15, 3/15/2026, 15/03/2026, “Mar 15, 2026” or Excel dates. Receipt photos can’t come from a spreadsheet; add them to each expense afterwards.</p>
+    <div class="grid-2" style="margin-top:6px">
+      <div>
+        <h4>Payments (e.g. your bank’s e-Transfer list)</h4>
+        <table class="mini"><tbody>${list('payments')}</tbody></table>
+        <ul class="muted small">
+          <li>Copy the rows from online banking and paste them in; headings aren’t needed. The tracker works out which column is the date, the name and the amount.</li>
+          <li>Each payment is matched to a member by their name <strong>or any of their other names</strong> (order and capitals don’t matter). If it can’t tell, choose who it’s from, and it can remember that name for next time.</li>
+          <li>Payments from drop-ins pay off their unpaid visits.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Drop-ins</h4>
+        <table class="mini"><tbody>${list('dropins')}</tbody></table>
+        <ul class="muted small">
+          <li>One row per person (or per visit). A list of practices like “TAG Jan 6, 12, 19” is kept with the visit.</li>
+          <li>If your list is lower down in a tab, set “Column headings are on row” to the right row on the preview screen.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:10px">Dates can be 2026-03-15, 3/15/2026, 15/03/2026, “Sept 26, 2026” or Excel dates. Receipt photos can’t come from a spreadsheet; add them to each expense afterwards.</p>
   </details>`;
 }
 
@@ -3124,18 +3689,23 @@ const fixed = n => round2(n).toFixed(2);
 
 const EXPORTS = {
   members: () => [
-    ['Name', 'Email', 'Phone', 'Fee Plan', 'Fee Target', 'Amount Paid', 'Balance', 'Status', 'Overdue Amount', 'Next Due Date', 'Next Due Amount', 'Last Payment Method', 'Last Payment Date', 'Notes', 'Created', 'Last Updated'],
+    ['Name', 'Other Names', 'Email', 'Phone', 'Fee Plan', 'Fee Target', 'Amount Paid', 'Balance', 'Status', 'Overdue Amount', 'Next Due Date', 'Next Due Amount', 'Last Payment Method', 'Last Payment Date', 'Notes', 'Created', 'Last Updated'],
     ...[...state.members].sort(byName).map(m => {
       const last = latestPayment(m), next = nextInstallment(m), plan = memberPlan(m);
       const nextDue = next ? next.dueDate : (memberBalance(m) > 0 ? memberDue(m) : '');
       const nextAmt = next ? fixed(next.remaining) : (memberBalance(m) > 0 ? fixed(memberBalance(m)) : '');
-      return [m.name, m.email, m.phone, plan ? plan.name : '', fixed(m.feeTarget), fixed(memberPaid(m)), fixed(memberBalance(m)), STATUS[memberStatus(m)].label, fixed(overdueAmount(m)), nextDue, nextAmt, last?.method || '', last?.date || '', m.notes, fmtTSPlain(m.createdAt), fmtTSPlain(m.updatedAt)];
+      return [m.name, m.aliases.join('; '), m.email, m.phone, plan ? plan.name : '', fixed(m.feeTarget), fixed(memberPaid(m)), fixed(memberBalance(m)), STATUS[memberStatus(m)].label, fixed(overdueAmount(m)), nextDue, nextAmt, last?.method || '', last?.date || '', m.notes, fmtTSPlain(m.createdAt), fmtTSPlain(m.updatedAt)];
     }),
   ],
   payments: () => [
     ['Member', 'Payment Date', 'Amount', 'Payment Method', 'Note', 'Recorded At', 'Last Updated'],
     ...state.members.flatMap(m => m.payments.map(p => [m.name, p.date, fixed(p.amount), p.method, p.note, fmtTSPlain(p.createdAt), fmtTSPlain(p.updatedAt)]))
       .sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0])),
+  ],
+  dropins: () => [
+    ['Name', 'Date', 'Practice / Event', 'Charge', 'Paid', 'Owed', 'Status', 'Payment Method', 'Notes', 'Created', 'Last Updated'],
+    ...[...state.dropIns].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+      .map(d => [d.name, d.dateUnknown ? '' : d.date, d.session, fixed(d.fee), fixed(d.paid), fixed(dropOwed(d)), DROP_STATUS[dropStatus(d)].label, d.paid > 0 ? d.method : '', d.notes, fmtTSPlain(d.createdAt), fmtTSPlain(d.updatedAt)]),
   ],
   expenses: () => [
     ['Date', 'Description', 'Category', 'Quantity', 'Unit Price', 'Total', 'Payment Method', 'Paid By', 'Reimbursement Status', 'Reimbursed At', 'Receipt', 'Receipt Photos', 'Notes', 'Created', 'Last Updated'],
@@ -3165,9 +3735,11 @@ const EXPORTS = {
       ['Fees collected', fixed(t.collected)],
       ['Fees outstanding', fixed(t.outstanding)],
       ['Fees overdue', fixed(t.overdue)],
+      ['Drop-in income', fixed(t.dropIns)],
+      ['Drop-ins still owed', fixed(t.dropOwing)],
       ['Total expenses', fixed(t.expenses)],
       ['Pending reimbursements', fixed(t.pending)],
-      ['Net balance (float + fees - expenses)', fixed(t.net)],
+      ['Net balance (float + fees + drop-ins - expenses)', fixed(t.net)],
       ['Cash on hand (net + pending reimbursements)', fixed(t.cash)],
       ['Members paid', c.paid],
       ['Members partial', c.partial],
@@ -3181,7 +3753,7 @@ function exportCSV(kind) {
 }
 function exportAll() {
   Object.keys(EXPORTS).forEach((k, i) => setTimeout(() => exportCSV(k), i * 400));
-  toast('Downloading 5 CSV files…');
+  toast(`Downloading ${Object.keys(EXPORTS).length} CSV files…`);
 }
 function downloadTemplate(kind) {
   const y = new Date().getFullYear();
@@ -3264,6 +3836,9 @@ function saveSettings(form) {
   s.defaultDueDate = isValidDateStr(fd.defaultDueDate) ? fd.defaultDueDate : '';
   s.budgetWarnPct = clamp(Math.round(Number(fd.budgetWarnPct)) || 80, 1, 100);
   s.theme = ['light', 'dark'].includes(fd.theme) ? fd.theme : 'auto';
+  const dropFee = parseMoney(fd.dropInFee);
+  s.dropInFee = dropFee != null && dropFee > 0 ? dropFee : 0;
+  s.freeFirstDropIn = fd.freeFirstDropIn === 'on';
   commit('Updated team settings', { type: 'settings' });
   toast('Settings saved');
 }
@@ -3316,28 +3891,29 @@ function sampleData() {
   s.feePlans = [full, half];
   const acts = [{ id: uid(), at: at(45, 10), type: 'float', text: `Starting float set to ${money(3200)}` }];
   const people = [
-    ['Alex Chen', 350, full, [[350, 'e-Transfer/Venmo', 30]]],
-    ['Priya Patel', 350, full, [[175, 'e-Transfer/Venmo', 28], [175, 'e-Transfer/Venmo', 5]]],
+    ['Alex Chen', 350, full, [[350, 'e-Transfer', 30]]],
+    ['Priya Patel', 350, full, [[175, 'e-Transfer', 28], [175, 'e-Transfer', 5]]],
     ['Jordan Smith', 350, full, [[200, 'Cash', 20]]],
     ['Mei Wong', 350, null, []],
-    ['Sam Rivera', 350, full, [[350, 'Check', 25]]],
+    ['Sam Rivera', 350, full, [[350, 'Cheque', 25]]],
     ['Taylor Nguyen', 350, full, [[100, 'Cash', 18]], 'Agreed to pay in three installments'],
     ['Chris Lee', 350, full, []],
     ['Fatima Khan', 350, full, [[350, 'Credit', 12]]],
-    ["Jamie O'Brien", 350, full, [[150, 'e-Transfer/Venmo', 9]]],
+    ["Jamie O'Brien", 350, full, [[150, 'e-Transfer', 9]]],
     ['Kenji Tanaka', 300, full, [[300, 'Bank Transfer', 15]], 'Returning paddler discount'],
     ['Lucia Gomez', 350, null, []],
-    ['Noah Williams', 350, full, [[350, 'e-Transfer/Venmo', 2]]],
+    ['Noah Williams', 350, full, [[350, 'e-Transfer', 2]]],
     ['Grace Kim', 175, half, [[175, 'Cash', 6]], 'Summer only'],
     ['Omar Haddad', 350, full, [[50, 'Cash', 1]]],
     ['Riley Thompson', 350, full, []],
-    ['Zoe Martin', 350, full, [[350, 'e-Transfer/Venmo', 33]]],
+    ['Zoe Martin', 350, full, [[350, 'e-Transfer', 33]]],
   ];
   acts.push({ id: uid(), at: at(46, 9), type: 'member', text: `Added ${people.length} members` });
   s.members = people.map(([name, fee, plan, pays, notes = ''], i) => {
     const created = at(46, 9, i);
     const slug = name.toLowerCase().replace(/[^a-z]+/g, '.').replace(/^\.|\.$/g, '');
-    const m = { id: uid(), name, email: `${slug}@example.com`, phone: `555-01${pad(i + 10)}`, feeTarget: fee, planId: plan ? plan.id : '', dueDate: '', notes, createdAt: created, updatedAt: created, payments: [] };
+    const aliases = { 'Mei Wong': ['Wong Mei Ling'], 'Chris Lee': ['Christopher Lee-Park'], 'Grace Kim': ['Kim Eun-ji'] }[name] || [];
+    const m = { id: uid(), name, aliases, email: `${slug}@example.com`, phone: `555-01${pad(i + 10)}`, feeTarget: fee, planId: plan ? plan.id : '', dueDate: '', notes, createdAt: created, updatedAt: created, payments: [] };
     for (const [amount, method, ago] of pays) {
       const ts = at(ago, 19, (i * 7) % 60);
       m.payments.push({ id: uid(), amount, method, date: addDays(t, -ago), note: '', createdAt: ts, updatedAt: ts });
@@ -3351,7 +3927,7 @@ function sampleData() {
     [27, 'Carbon paddles', 'Equipment', 4, 189.99, 'Credit', 'Team account', 'none', '', ''],
     [26, 'Regatta registration', 'Admin', 1, 275, 'Credit', 'Team account', 'none', 'REG-0098', 'Summer festival entry'],
     [22, 'PFDs (life jackets)', 'Equipment', 6, 64.5, 'Credit', 'Alex Chen', 'reimbursed', '', ''],
-    [16, 'Team jerseys', 'Uniforms', 18, 38, 'e-Transfer/Venmo', 'Team account', 'none', '', 'Includes name printing'],
+    [16, 'Team jerseys', 'Uniforms', 18, 38, 'e-Transfer', 'Team account', 'none', '', 'Includes name printing'],
     [14, 'BBQ supplies – season kickoff', 'Miscellaneous', 1, 138.75, 'Cash', 'Priya Patel', 'reimbursed', '', ''],
     [10, 'Referee fees – scrimmage', 'Referees', 2, 60, 'Cash', 'Team account', 'none', '', ''],
     [8, 'Trophies for awards night', 'Miscellaneous', 1, 145, 'Credit', 'Team account', 'none', '', ''],
@@ -3368,6 +3944,21 @@ function sampleData() {
     acts.push({ id: uid(), at: created, type: 'expense', text: `Expense · ${description} (${category})`, amount: total, dir: 'out' });
     if (reimbursedAt) acts.push({ id: uid(), at: reimbursedAt, type: 'reimburse', text: `Reimbursed ${paidBy} for “${description}”`, amount: total });
     return { id: uid(), date: addDays(t, -ago), description, category, quantity, unitPrice, total, paymentMethod, paidBy, reimbursement, reimbursedAt, receipt, photos: [], notes, createdAt: created, updatedAt: reimbursedAt || created };
+  });
+  const drops = [
+    // name, daysAgo, session, fee, paid
+    ['Sam Lee', 30, 'Discovery Day', 10, 10],
+    ['Jo Park', 30, 'Discovery Day', 10, 10],
+    ['Kim Tran', 30, 'Discovery Day', 10, 10],
+    ['Avery Brooks', 20, 'TAG practice', 0, 0],
+    ['Avery Brooks', 13, 'TAG practice', 20, 20],
+    ['Dev Malhotra', 6, 'AB practice', 0, 0],
+    ['Dev Malhotra', 1, 'AB practice', 20, 0],
+  ];
+  s.dropIns = drops.map(([name, ago, session, fee, paid], i) => {
+    const ts = at(ago, 21, i);
+    if (paid) acts.push({ id: uid(), at: ts, type: 'dropin', text: `Drop-in · ${name} at ${session}`, amount: paid, dir: 'in' });
+    return { id: uid(), name, date: addDays(t, -ago), session, fee, paid, method: 'e-Transfer', notes: fee ? '' : 'Free first visit', createdAt: ts, updatedAt: ts };
   });
   s.activity = acts.sort((a, b) => b.at.localeCompare(a.at));
   return s;
@@ -3415,6 +4006,15 @@ document.addEventListener('click', e => {
     case 'member-filter': ui.memberFilter = el.dataset.status; render(); break;
     case 'filter-members': ui.memberFilter = el.dataset.status; ui.memberSearch = ''; goTab('members'); break;
     case 'clear-member-filters': ui.memberFilter = 'all'; ui.memberSearch = ''; render(); break;
+    case 'add-dropin': openDropInModal(); break;
+    case 'edit-dropin': openDropInModal(id); break;
+    case 'delete-dropin': deleteDropIn(id); break;
+    case 'dropin-paid': { const d = state.dropIns.find(x => x.id === id); if (d) markDropInsPaid([d], d.name); break; }
+    case 'person-visit': openDropInModal(null, el.dataset.name); break;
+    case 'person-paid': markDropInsPaid(state.dropIns.filter(d => samePerson(d.name, el.dataset.name)), el.dataset.name); break;
+    case 'make-member': makeMemberFromDropIn(el.dataset.name); break;
+    case 'drop-view': ui.dropView = el.dataset.view; render(); break;
+    case 'clear-drop-filters': ui.dropSearch = ''; ui.dropFilter = 'all'; render(); break;
     case 'add-plan': openPlanModal(); break;
     case 'edit-plan': openPlanModal(id); break;
     case 'delete-plan': deletePlan(id); break;
@@ -3441,7 +4041,7 @@ document.addEventListener('click', e => {
       if (s) startImport(s.rows, `${wb.fileName} › ${s.name}`);
       break;
     }
-    case 'import-pick-another': ui.imp.stage = 'pick-sheet'; render(); break;
+    case 'import-pick-another': ui.imp.stage = 'pick-sheet'; ui.imp.type = 'auto'; render(); break;
     case 'import-select-all': setAllTicks('all'); break;
     case 'import-select-none': setAllTicks('none'); break;
     case 'import-select-default': setAllTicks('default'); break;
@@ -3461,6 +4061,7 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'memberSearch') { ui.memberSearch = t.value; refreshMembersTable(); }
   else if (t.id === 'expenseSearch') { ui.expenseSearch = t.value; refreshExpensesTable(); }
+  else if (t.id === 'dropSearch') { ui.dropSearch = t.value; refreshDropTable(); }
   else if (t.id === 'importPaste') ui.imp.pasteDraft = t.value;
 });
 
@@ -3476,6 +4077,7 @@ document.addEventListener('change', e => {
   else if (t.id === 'expReimb') { ui.expenseReimb = t.value; refreshExpensesTable(); }
   else if (t.id === 'expPhotos') { ui.expensePhotos = t.value; refreshExpensesTable(); }
   else if (t.id === 'expSort') { ui.expenseSort = t.value; refreshExpensesTable(); }
+  else if (t.id === 'dropFilter') { ui.dropFilter = t.value; refreshDropTable(); }
   else if (t.dataset.budget) {
     const cat = t.dataset.budget;
     const v = Math.max(0, parseMoney(t.value) ?? 0);
@@ -3488,9 +4090,15 @@ document.addEventListener('change', e => {
   else if (t.id === 'importFile') { readImportFile(t.files[0]); t.value = ''; }
   else if (t.id === 'restoreFile') { readRestoreFile(t.files[0]); t.value = ''; }
   else if (t.id === 'impTypeInput') imp.type = t.value;
-  else if (t.id === 'impType') { imp.resolvedType = t.value; imp.mapping = autoMap(imp.headers, t.value); imp.dupMode = 'skip'; imp.overrides = {}; imp.dayFirst = detectDayFirst(); render(); }
+  else if (t.id === 'impType') { imp.type = imp.resolvedType = t.value; remapImport(); render(); }
   else if (t.dataset.map) { imp.mapping[t.dataset.map] = Number(t.value); if (/date/i.test(t.dataset.map)) imp.dayFirst = detectDayFirst(); render(); }
   else if (t.dataset.row) { imp.overrides[Number(t.dataset.row)] = t.checked; render(); }
+  else if (t.dataset.match) { imp.matches[Number(t.dataset.match)] = t.value; render(); }
+  else if (t.id === 'impHeaderRow') { const n = Math.round(Number(t.value)); if (n >= 1 && n <= imp.grid.length) { setHeaderRow(n - 1, imp.noHeader, imp.type === 'auto'); render(); } }
+  else if (t.id === 'impNoHeader') { setHeaderRow(imp.headerRow, t.checked, imp.type === 'auto'); render(); }
+  else if (t.id === 'impLearnAliases') { imp.learnAliases = t.checked; render(); }
+  else if (t.id === 'impDefaultMethod') { imp.defaultMethod = t.value; render(); }
+  else if (t.id === 'impDropSession') { imp.dropSession = t.value; }
   else if (t.id === 'impDayFirst') { imp.dayFirst = t.checked; render(); }
   else if (t.id === 'impUndated') { if (isValidDateStr(t.value)) { imp.undatedDate = t.value; render(); } }
   else if (t.id === 'impMatchPlans') { imp.matchPlans = t.checked; render(); }

@@ -1,6 +1,6 @@
 # Dragon Boat Finance Tracker
 
-Tracks the team's money in one place: member fees and installments, expenses with receipt photos, reimbursements, budgets and net balance.
+Tracks the team's money in one place: member fees and installments, drop-ins, expenses with receipt photos, reimbursements, budgets and net balance.
 
 **Open it here:** https://sdevji.github.io/dragon-boat-finance-tracker/
 
@@ -30,9 +30,19 @@ Go to **Import / Export**. You can use the Excel file directly:
 2. Drop in the `.xlsx` file, from Excel or from Google Sheets (**File → Download → Microsoft Excel**). Then pick a tab:
    - **Fee Collection:** one member per row. Payment 1, Payment 2 and Payment 3 each become a separate payment. Names with no fee and no payments come in unticked.
    - **Payments:** the expense tables. The "Regattas" table becomes its own category, "Coaching" is offered as a new category, and the totals rows and the bank-balance log underneath are left out.
+   - **Drop-ins:** choose **Fee Collection** again and set "Column headings are on row" to **64**, where the drop-in list starts. It's recognised as drop-ins ($700 paid).
 3. Check the preview, untick anything you don't want, and click **Import**.
 
 The workbook has no payment dates. You choose one date to record them all under, and you can edit any payment afterwards.
+
+## Bank e-Transfers and other names
+
+People's e-Transfers often arrive under their legal name rather than the name they go by. To handle that:
+
+1. Open a member (pencil icon) and add their other names under **Other names**, one per line, e.g. `SMITH, JOHN ROBERT`. Order, capitals and punctuation don't matter.
+2. In online banking, copy the rows from your e-Transfer list and paste them into **Import / Export**. No headings are needed; the date, name and amount columns are worked out automatically.
+3. Each payment is matched to a member by any of their names, or to a drop-in. Anything it can't place shows **Don't import**. Use the **Who is it?** picker to choose a member, and that name is remembered for next time.
+4. Payments that are already in the tracker are spotted and left out.
 
 ## Where your data lives (please read)
 
@@ -49,12 +59,13 @@ To move to another computer or browser, open the tracker there. Then go to **Imp
 
 | Section | What it does |
 |---|---|
-| **Dashboard** | Shows net balance (float + fees collected − expenses), cash on hand, fee-collection progress, key totals including the overdue amount, spending by category against budget, and recent activity. |
-| **Members & Fees** | Each person's fee, fee plan, amount paid, balance, next installment due and status (Paid, Partial, Unpaid or Overdue). Click a row to see their payment history and installment schedule. Record payments with date, method and notes. Search, filter and sort the list. |
+| **Dashboard** | Shows net balance (float + fees collected + drop-ins − expenses), cash on hand, fee-collection progress, key totals including the overdue amount and drop-in income, spending by category against budget, and recent activity. |
+| **Members & Fees** | Each person's fee, fee plan, amount paid, balance, next installment due and status (Paid, Partial, Unpaid or Overdue), plus any other names they go by. Click a row to see their payment history and installment schedule. Record payments with date, method (Cash, e-Transfer, Credit, Cheque, Bank Transfer) and notes. Search by any of their names, filter and sort. |
+| **Drop-ins** | People who come to a practice or event without being full members. Record one person or a whole list at once (e.g. Discovery Day), with the first visit free if you like. See it by person or as a visit log, mark visits paid, and turn a regular into a member in one click. |
 | **Expenses** | Itemized ledger with quantity × unit price, category, payment method, who paid, reimbursement status and **receipt photos**. Filter by category, reimbursement or missing receipts. |
 | **Budget** | A spending target per category. Add, rename or remove categories, such as Coaching, Regattas or Socials. Bars turn amber at 80% and red once a category is over. |
-| **Import / Export** | Imports .xlsx files, CSV files or pasted cells, with column matching and a row-by-row preview. Exports CSVs. Also holds backup and restore. |
-| **Settings** | Team name, currency, **fee plans**, default fee and due date, budget warning level, light/dark mode, sample data and the erase-everything option. |
+| **Import / Export** | Imports members, drop-ins, payments (such as a bank e-Transfer list) and expenses from .xlsx files, CSV files or pasted cells, with column matching and a row-by-row preview. Exports CSVs. Also holds backup and restore. |
+| **Settings** | Team name, currency, **fee plans**, default fee and due date, drop-in rate and free first visit, budget warning level, light/dark mode, sample data and the erase-everything option. |
 
 ### Fee plans and statuses
 
@@ -70,4 +81,4 @@ Open an expense and use **Add photo**, drag photos in, or paste a screenshot. Ph
 
 ### Mistakes
 
-Deleting a member, payment, expense, category or plan, or running an import, pops up an **Undo** button for a few seconds.
+Deleting a member, payment, drop-in, expense, category or plan, or running an import, pops up an **Undo** button for a few seconds.
